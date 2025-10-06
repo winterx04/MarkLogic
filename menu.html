@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Menu - MarkLogic</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+            -webkit-font-smoothing: antialiased;
+            position: relative;
+        }
+
+        /* Background Video */
+        .video-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+            overflow: hidden;
+        }
+
+        .video-background video {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            min-width: 100%;
+            min-height: 100%;
+            transform: translate(-50%, -50%);
+            object-fit: cover;
+            filter: brightness(0.6) contrast(1.05) saturate(1.2);
+        }
+
+        .video-background::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom right, rgba(255, 255, 255, 0.25), rgba(240, 240, 255, 0.15));
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            pointer-events: none;
+        }
+
+        /* Floating Logo */
+        .header-logo {
+            position: fixed;
+            top: 40px;
+            left: 40px;
+            z-index: 15;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .header-logo-image {
+            width: 50px;
+            height: auto;
+            filter: drop-shadow(0 4px 12px rgba(255, 255, 255, 0.15));
+        }
+
+        .header-logo-image img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .header-brand {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .header-brand-name {
+            font-size: 22px;
+            font-weight: 600;
+            background: linear-gradient(135deg, #ffffff, #a8b2d1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.3px;
+            line-height: 1;
+        }
+
+        .header-slogan {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.6);
+            font-weight: 400;
+            letter-spacing: 0.2px;
+        }
+
+        /* Center Container */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            z-index: 5;
+        }
+
+        /* Menu Layout */
+        .menu-container {
+            width: 100%;
+            max-width: 1200px;
+            position: relative;
+            z-index: 10;
+            display: flex;
+            justify-content: center;
+            align-items: stretch;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+
+        /* Individual Menu Card — taller and elegant */
+        .menu-card {
+            flex: 1 1 30%;
+            min-width: 280px;
+            max-width: 380px;
+            height: 460px; /* ⬅️ Increased height */
+            text-align: center;
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 22px;
+            padding: 50px 32px; /* ⬅️ More padding */
+            box-shadow:
+                inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+                0 20px 60px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 28px; /* ⬅️ More spacing between items */
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .menu-card:hover {
+            transform: translateY(-6px);
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.4);
+            box-shadow:
+                inset 0 0 0 1px rgba(255, 255, 255, 0.3),
+                0 24px 70px rgba(0, 0, 0, 0.35);
+        }
+
+        /* Icon Above Text — bigger and more space */
+        .menu-icon {
+            width: 100px;  /* ⬅️ bigger box */
+            height: 100px; /* ⬅️ bigger box */
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            transition: all 0.3s ease;
+        }
+
+        .menu-card:hover .menu-icon {
+            background: rgba(255, 255, 255, 0.25);
+            transform: scale(1.08);
+            box-shadow: 0 0 25px rgba(255, 255, 255, 0.3);
+        }
+
+        .menu-icon img {
+            width: 55px; /* ⬅️ slightly larger icon */
+            height: 55px;
+            object-fit: contain;
+            filter: brightness(0) invert(1);
+        }
+
+        .menu-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .menu-title {
+            font-size: 24px; /* slightly larger */
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: rgba(255, 255, 255, 0.95);
+            letter-spacing: -0.3px;
+        }
+
+        .menu-description {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.75);
+            line-height: 1.6;
+            max-width: 300px;
+        }
+
+        /* Animations */
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .menu-card { flex: 1 1 45%; height: 420px; }
+        }
+
+        @media (max-width: 640px) {
+            .header-logo {
+                top: 24px;
+                left: 24px;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+
+            .header-logo-image { width: 40px; }
+
+            .header-brand-name { font-size: 18px; }
+
+            .menu-container {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .menu-card {
+                width: 100%;
+                max-width: 400px;
+                padding: 40px 24px;
+                height: auto;
+            }
+
+            .menu-description { font-size: 14px; }
+        }
+
+    </style>
+</head>
+<body>
+    <!-- Video Background -->
+    <div class="video-background">
+        <video autoplay muted loop playsinline>
+            <source src="background.mp4" type="video/mp4">
+        </video>
+    </div>
+
+    <!-- Header Logo -->
+    <div class="header-logo">
+        <div class="header-logo-image">
+            <img src="logo.png" alt="MarkLogic Logo">
+        </div>
+        <div class="header-brand">
+            <div class="header-brand-name">MarkLogic</div>
+            <div class="header-slogan">Stop Searching. Start Finding</div>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="container">
+        <div class="menu-container">
+
+            <!-- Menu Card 1 -->
+            <a href="#search" class="menu-card">
+                <div class="menu-icon">
+                    <img src="compare.png" alt="Search Icon">
+                </div>
+                <div class="menu-content">
+                    <h3 class="menu-title">Compare</h3>
+                    <p class="menu-description">
+                        Compare trademarks instantly to detect similarities and conflicts using our advanced search algorithms.
+                    </p>
+                </div>
+            </a>
+
+            <!-- Menu Card 2 -->
+            <a href="#analytics" class="menu-card">
+                <div class="menu-icon">
+                    <img src="search.png" alt="Analytics Icon">
+                </div>
+                <div class="menu-content">
+                    <h3 class="menu-title">Search</h3>
+                    <p class="menu-description">
+                        Quickly search trademarks by name, keywords, or logo features with our intuitive search interface.
+                    </p>
+                </div>
+            </a>
+
+            <!-- Menu Card 3 -->
+            <a href="#integration" class="menu-card">
+                <div class="menu-icon">
+                    <img src="dataset.png" alt="Integration Icon">
+                </div>
+                <div class="menu-content">
+                    <h3 class="menu-title">Dataset</h3>
+                    <p class="menu-description">
+                        Upload new trademark journals to keep the system updated with the latest information.
+                    </p>
+                </div>
+            </a>
+        </div>
+    </div>
+</body>
+</html>
