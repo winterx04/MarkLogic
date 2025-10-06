@@ -3,8 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Menu - MarkLogic</title>
-    <style>
+    <title>Menu</title>
+    <link rel="icon" type="image/png" href="favicon.png">
+    <link rel="stylesheet" href="style.css">
+    <!-- <style>
         * {
             margin: 0;
             padding: 0;
@@ -135,17 +137,18 @@
             flex: 1 1 30%;
             min-width: 280px;
             max-width: 380px;
-            height: 460px; /* ⬅️ Increased height */
+            height: 450px; /* ⬅️ Increased height */
             text-align: center;
-            backdrop-filter: blur(30px);
-            -webkit-backdrop-filter: blur(30px);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
             background: rgba(255, 255, 255, 0.15);
             border: 1px solid rgba(255, 255, 255, 0.3);
             border-radius: 22px;
             padding: 50px 32px; /* ⬅️ More padding */
             box-shadow:
-                inset 0 0 0 1px rgba(255, 255, 255, 0.2),
-                0 20px 60px rgba(0, 0, 0, 0.3);
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.1),
+                0 20px 60px rgba(0, 0, 0, 0.4),
+                0 0 0 1px rgba(255, 255, 255, 0.05);
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -155,73 +158,183 @@
             text-decoration: none;
             color: inherit;
             transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Gradient overlay on hover */
+        .menu-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(
+                circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+                rgba(139, 92, 246, 0.15),
+                transparent 60%
+            );
+            opacity: 0;
+            transition: opacity 0.4s ease;
+            pointer-events: none;
+        }
+
+        .menu-card:hover::before {
+            opacity: 1;
         }
 
         .menu-card:hover {
-            transform: translateY(-6px);
-            background: rgba(255, 255, 255, 0.2);
-            border-color: rgba(255, 255, 255, 0.4);
+            transform: translateY(-8px) scale(1.02);
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(139, 92, 246, 0.4);
             box-shadow:
-                inset 0 0 0 1px rgba(255, 255, 255, 0.3),
-                0 24px 70px rgba(0, 0, 0, 0.35);
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.15),
+                0 30px 80px rgba(0, 0, 0, 0.5),
+                0 0 60px rgba(139, 92, 246, 0.3),
+                0 0 0 1px rgba(139, 92, 246, 0.2);
         }
 
         /* Icon Above Text — bigger and more space */
         .menu-icon {
-            width: 100px;  /* ⬅️ bigger box */
-            height: 100px; /* ⬅️ bigger box */
-            background: rgba(255, 255, 255, 0.15);
-            border-radius: 20px;
+            width: 110px;
+            height: 110px;
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(59, 130, 246, 0.15));
+            border-radius: 22px;
             display: flex;
             align-items: center;
             justify-content: center;
-            border: 1px solid rgba(255, 255, 255, 0.25);
-            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .menu-icon::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(
+                45deg,
+                transparent,
+                rgba(255, 255, 255, 0.1),
+                transparent
+            );
+            transform: rotate(45deg);
+            transition: all 0.6s ease;
+        }
+
+        .menu-arrow {
+            opacity: 0;
+            transform: translateX(-12px);
+            margin-top: auto;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            justify-content: center;
+        }
+
+        .menu-arrow svg {
+            width: 32px;
+            height: 32px;
+            stroke: rgba(255, 255, 255, 0.8);
+        }
+
+        /* Hover effect */
+        .menu-card:hover .menu-arrow {
+            opacity: 1;
+            transform: translateX(0);
         }
 
         .menu-card:hover .menu-icon {
-            background: rgba(255, 255, 255, 0.25);
-            transform: scale(1.08);
-            box-shadow: 0 0 25px rgba(255, 255, 255, 0.3);
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(59, 130, 246, 0.25));
+            transform: scale(1.1) rotate(5deg);
+            border-color: rgba(139, 92, 246, 0.4);
+            box-shadow: 
+                0 0 30px rgba(139, 92, 246, 0.4),
+                inset 0 0 20px rgba(255, 255, 255, 0.1);
         }
 
         .menu-icon img {
-            width: 55px; /* ⬅️ slightly larger icon */
-            height: 55px;
+            width: 58px;
+            height: 58px;
             object-fit: contain;
             filter: brightness(0) invert(1);
+            transition: transform 0.3s ease;
+        }
+
+        .menu-card:hover .menu-icon img {
+            transform: scale(1.1);
         }
 
         .menu-content {
             display: flex;
             flex-direction: column;
             align-items: center;
+            position: relative;
+            z-index: 1;
         }
 
         .menu-title {
-            font-size: 24px; /* slightly larger */
+            font-size: 26px;
             font-weight: 600;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
             color: rgba(255, 255, 255, 0.95);
-            letter-spacing: -0.3px;
+            letter-spacing: -0.4px;
+            transition: all 0.3s ease;
+        }
+
+        .menu-card:hover .menu-title {
+            background: linear-gradient(135deg, #ffffff, #c4b5fd);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            transform: translateY(-2px);
         }
 
         .menu-description {
-            font-size: 16px;
-            color: rgba(255, 255, 255, 0.75);
-            line-height: 1.6;
+            font-size: 15px;
+            color: rgba(255, 255, 255, 0.65);
+            line-height: 1.7;
             max-width: 300px;
+            transition: color 0.3s ease;
+        }
+
+        .menu-card:hover .menu-description {
+            color: rgba(255, 255, 255, 0.85);
         }
 
         /* Animations */
         @keyframes float {
             0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-10px); }
+            50% { transform: translateY(-12px); }
+        }
+
+        /* Card entrance animation */
+        .menu-card {
+            animation: cardEntrance 0.6s ease backwards;
+        }
+
+        .menu-card:nth-child(1) { animation-delay: 0.1s; }
+        .menu-card:nth-child(2) { animation-delay: 0.2s; }
+        .menu-card:nth-child(3) { animation-delay: 0.3s; }
+
+        @keyframes cardEntrance {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         /* Responsive */
         @media (max-width: 1024px) {
-            .menu-card { flex: 1 1 45%; height: 420px; }
+            .menu-card { flex: 1 1 45%; height: 440px; }
         }
 
         @media (max-width: 640px) {
@@ -252,7 +365,7 @@
             .menu-description { font-size: 14px; }
         }
 
-    </style>
+    </style> -->
 </head>
 <body>
     <!-- Video Background -->
@@ -288,6 +401,12 @@
                         Compare trademarks instantly to detect similarities and conflicts using our advanced search algorithms.
                     </p>
                 </div>
+                <!-- Hover Arrow -->
+                <div class="menu-arrow">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                </div>
             </a>
 
             <!-- Menu Card 2 -->
@@ -301,6 +420,12 @@
                         Quickly search trademarks by name, keywords, or logo features with our intuitive search interface.
                     </p>
                 </div>
+                <!-- Hover Arrow -->
+                <div class="menu-arrow">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                </div>
             </a>
 
             <!-- Menu Card 3 -->
@@ -313,6 +438,12 @@
                     <p class="menu-description">
                         Upload new trademark journals to keep the system updated with the latest information.
                     </p>
+                </div>
+                <!-- Hover Arrow -->
+                <div class="menu-arrow">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
                 </div>
             </a>
         </div>

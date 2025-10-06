@@ -1,0 +1,718 @@
+/* ==========================================
+   GLOBAL STYLES
+   ========================================== */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    background: #000;
+    color: #fff;
+    overflow: hidden;
+    height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    position: relative;
+}
+
+/* ==========================================
+   VIDEO BACKGROUND
+   ========================================== */
+
+.video-background {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 0;
+    overflow: hidden;
+}
+
+.video-background video {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    min-width: 100%;
+    min-height: 100%;
+    width: auto;
+    height: auto;
+    transform: translate(-50%, -50%);
+    object-fit: cover;
+    filter: brightness(0.6) contrast(1.05) saturate(1.2);
+}
+
+.video-background::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(to bottom right, rgba(255, 255, 255, 0.25), rgba(240, 240, 255, 0.15));
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    pointer-events: none;
+}
+
+@keyframes grain {
+    0%, 100% { transform: translate(0, 0); }
+    10% { transform: translate(-5%, -10%); }
+    30% { transform: translate(3%, -15%); }
+    50% { transform: translate(12%, 9%); }
+    70% { transform: translate(-9%, 4%); }
+    90% { transform: translate(5%, -10%); }
+}
+
+/* ==========================================
+   HEADER LOGO (Used in Menu & Sign-in Pages)
+   ========================================== */
+
+.header-logo {
+    position: fixed;
+    top: 40px;
+    left: 40px;
+    z-index: 15;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    animation: float 6s ease-in-out infinite;
+}
+
+.header-logo-image {
+    width: 50px;
+    height: auto;
+    filter: drop-shadow(0 4px 16px rgba(139, 92, 246, 0.4));
+    transition: filter 0.3s ease;
+}
+
+.header-logo:hover .header-logo-image {
+    filter: drop-shadow(0 6px 24px rgba(139, 92, 246, 0.6));
+}
+
+.header-logo-image img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.header-brand {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.header-brand-name {
+    font-size: 22px;
+    font-weight: 600;
+    background: linear-gradient(135deg, #ffffff, #c4b5fd, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -0.3px;
+    line-height: 1;
+}
+
+.header-slogan {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+    font-weight: 400;
+    letter-spacing: 0.3px;
+}
+
+/* ==========================================
+   CONTAINER
+   ========================================== */
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 20px;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    z-index: 5;
+}
+
+/* ==========================================
+   LANDING PAGE - HERO SECTION
+   ========================================== */
+
+.hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    position: relative;
+    z-index: 10;
+}
+
+.logo-container {
+    margin-bottom: 40px;
+    animation: float 6s ease-in-out infinite;
+}
+
+.logo-image {
+    width: 200px;
+    height: auto;
+    margin: 0 auto;
+    filter: drop-shadow(0 10px 30px rgba(255, 255, 255, 0.1));
+}
+
+.logo-image img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.brand-name {
+    font-size: 64px;
+    font-weight: 600;
+    margin-bottom: 20px;
+    background: linear-gradient(135deg, #ffffff, #a8b2d1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -0.5px;
+}
+
+.slogan {
+    font-size: 24px;
+    color: #ccd3e0;
+    margin-bottom: 50px;
+    max-width: 600px;
+    font-weight: 400;
+    letter-spacing: 0.3px;
+}
+
+/* ==========================================
+   BUTTONS
+   ========================================== */
+
+.btn-signin {
+    padding: 16px 48px;
+    border-radius: 18px;
+    font-size: 17px;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    color: rgba(255, 255, 255, 0.9);
+    position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    background: rgba(255, 255, 255, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.3),
+        0 4px 20px rgba(0, 0, 0, 0.15);
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-signin::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.1));
+    opacity: 0.3;
+    pointer-events: none;
+}
+
+.btn-signin:hover {
+    transform: translateY(-3px) scale(1.02);
+    background: rgba(255, 255, 255, 0.35);
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.5),
+        0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.btn-signin:active {
+    transform: translateY(-1px) scale(1);
+    background: rgba(255, 255, 255, 0.25);
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.4),
+        0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+/* ==========================================
+   SIGN-IN PAGE
+   ========================================== */
+
+.signin-container {
+    width: 100%;
+    max-width: 440px;
+    position: relative;
+    z-index: 10;
+}
+
+.signin-box {
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 24px;
+    padding: 48px 40px;
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+        0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.signin-title {
+    font-size: 28px;
+    font-weight: 600;
+    margin-bottom: 32px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.95);
+    letter-spacing: -0.3px;
+}
+
+.form-group {
+    margin-bottom: 24px;
+}
+
+.form-label {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: rgba(255, 255, 255, 0.85);
+    letter-spacing: 0.2px;
+}
+
+.form-input {
+    width: 100%;
+    padding: 14px 16px;
+    font-size: 16px;
+    font-family: inherit;
+    color: rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 12px;
+    outline: none;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.form-input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.form-input:focus {
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.4);
+    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.1);
+}
+
+.form-input:hover {
+    border-color: rgba(255, 255, 255, 0.35);
+}
+
+.forgot-password {
+    text-align: right;
+    margin-top: -8px;
+    margin-bottom: 24px;
+}
+
+.forgot-password a {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 14px;
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+.forgot-password a:hover {
+    color: rgba(255, 255, 255, 0.95);
+}
+
+/* Sign-in button specific styles */
+.signin-box .btn-signin {
+    width: 100%;
+    padding: 16px;
+    border-radius: 14px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.35),
+        0 4px 20px rgba(0, 0, 0, 0.15);
+    letter-spacing: 0.3px;
+}
+
+.signin-box .btn-signin:hover {
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.4);
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.5),
+        0 8px 30px rgba(0, 0, 0, 0.2);
+}
+
+.signin-box .btn-signin:active {
+    transform: translateY(0);
+    background: rgba(255, 255, 255, 0.3);
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.4),
+        0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.divider {
+    display: flex;
+    align-items: center;
+    margin: 32px 0;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 14px;
+}
+
+.divider::before,
+.divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.divider span {
+    padding: 0 16px;
+}
+
+.signup-link {
+    text-align: center;
+    margin-top: 24px;
+    font-size: 15px;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.signup-link a {
+    color: rgba(255, 255, 255, 0.95);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.3s ease;
+}
+
+.signup-link a:hover {
+    color: #ffffff;
+}
+
+.error-message {
+    color: #9f0000;
+    font-size: 13px;
+    margin-top: 4px;
+    display: block;
+}
+
+/* ==========================================
+   MENU PAGE
+   ========================================== */
+
+.menu-container {
+    width: 100%;
+    max-width: 1200px;
+    position: relative;
+    z-index: 10;
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    gap: 28px;
+    flex-wrap: wrap;
+}
+
+.menu-card {
+    flex: 1 1 30%;
+    min-width: 280px;
+    max-width: 380px;
+    height: 480px;
+    text-align: center;
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 24px;
+    padding: 50px 32px;
+    box-shadow:
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.1),
+        0 20px 60px rgba(0, 0, 0, 0.4),
+        0 0 0 1px rgba(255, 255, 255, 0.05);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 28px;
+    cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Gradient overlay on hover */
+.menu-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(
+        circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+        rgba(139, 92, 246, 0.15),
+        transparent 60%
+    );
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+}
+
+.menu-card:hover::before {
+    opacity: 1;
+}
+
+.menu-card:hover {
+    transform: translateY(-8px) scale(1.02);
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(139, 92, 246, 0.4);
+    box-shadow:
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.15),
+        0 30px 80px rgba(0, 0, 0, 0.5),
+        0 0 60px rgba(139, 92, 246, 0.3),
+        0 0 0 1px rgba(139, 92, 246, 0.2);
+}
+
+.menu-icon {
+    width: 110px;
+    height: 110px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(59, 130, 246, 0.15));
+    border-radius: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.menu-icon::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(
+        45deg,
+        transparent,
+        rgba(255, 255, 255, 0.1),
+        transparent
+    );
+    transform: rotate(45deg);
+    transition: all 0.6s ease;
+}
+
+.menu-card:hover .menu-icon::before {
+    left: 100%;
+}
+
+.menu-card:hover .menu-icon {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(59, 130, 246, 0.25));
+    transform: scale(1.1) rotate(5deg);
+    border-color: rgba(139, 92, 246, 0.4);
+    box-shadow: 
+        0 0 30px rgba(139, 92, 246, 0.4),
+        inset 0 0 20px rgba(255, 255, 255, 0.1);
+}
+
+.menu-icon img {
+    width: 58px;
+    height: 58px;
+    object-fit: contain;
+    filter: brightness(0) invert(1);
+    transition: transform 0.3s ease;
+}
+
+.menu-card:hover .menu-icon img {
+    transform: scale(1.1);
+}
+
+.menu-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    z-index: 1;
+}
+
+.menu-title {
+    font-size: 26px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: rgba(255, 255, 255, 0.95);
+    letter-spacing: -0.4px;
+    transition: all 0.3s ease;
+}
+
+.menu-card:hover .menu-title {
+    background: linear-gradient(135deg, #ffffff, #c4b5fd);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    transform: translateY(-2px);
+}
+
+.menu-description {
+    font-size: 15px;
+    color: rgba(255, 255, 255, 0.65);
+    line-height: 1.7;
+    max-width: 300px;
+    transition: color 0.3s ease;
+}
+
+.menu-card:hover .menu-description {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.menu-arrow {
+    opacity: 0;
+    transform: translateX(-12px);
+    margin-top: auto;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    justify-content: center;
+}
+
+.menu-arrow svg {
+    width: 32px;
+    height: 32px;
+    stroke: rgba(255, 255, 255, 0.9);
+    filter: drop-shadow(0 2px 8px rgba(139, 92, 246, 0.4));
+}
+
+.menu-card:hover .menu-arrow {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+/* ==========================================
+   ANIMATIONS
+   ========================================== */
+
+@keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-12px); }
+}
+
+/* Card entrance animation */
+.menu-card {
+    animation: cardEntrance 0.6s ease backwards;
+}
+
+.menu-card:nth-child(1) { animation-delay: 0.1s; }
+.menu-card:nth-child(2) { animation-delay: 0.2s; }
+.menu-card:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes cardEntrance {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ==========================================
+   RESPONSIVE DESIGN
+   ========================================== */
+
+@media (max-width: 1024px) {
+    .menu-card { 
+        flex: 1 1 45%; 
+        height: 440px; 
+    }
+}
+
+@media (max-width: 968px) {
+    /* Landing Page */
+    .brand-name {
+        font-size: 48px;
+    }
+
+    .logo-image {
+        width: 150px;
+    }
+
+    .slogan {
+        font-size: 20px;
+        padding: 0 20px;
+    }
+
+    .btn-signin {
+        padding: 14px 40px;
+        font-size: 16px;
+    }
+
+    /* Header Logo */
+    .header-logo {
+        top: 24px;
+        left: 24px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .header-logo-image {
+        width: 40px;
+    }
+
+    .header-brand-name {
+        font-size: 18px;
+    }
+
+    .header-slogan {
+        font-size: 10px;
+    }
+
+    /* Sign-in Page */
+    .signin-container {
+        max-width: 380px;
+    }
+
+    .signin-box {
+        padding: 36px 28px;
+    }
+
+    .signin-title {
+        font-size: 24px;
+    }
+}
+
+@media (max-width: 640px) {
+    /* Menu Page */
+    .menu-container {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .menu-card {
+        width: 100%;
+        max-width: 400px;
+        padding: 40px 24px;
+        height: auto;
+    }
+
+    .menu-description {
+        font-size: 14px;
+    }
+}
