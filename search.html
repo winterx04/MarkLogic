@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dataset - MarkLogic</title>
+    <link rel="icon" type="image/png" href="favicon.png">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Dataset Page Specific Styles */
+        .dataset-page {
+            overflow: auto;
+        }
+
+        .dataset-main-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 120px 20px 60px;
+            position: relative;
+            z-index: 5;
+        }
+
+        .dataset-page-title {
+            font-size: 48px;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 50px;
+            color: rgba(255, 255, 255, 0.95);
+            letter-spacing: -0.5px;
+        }
+
+        .dataset-content-box {
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow:
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.15),
+                0 20px 60px rgba(0, 0, 0, 0.4);
+        }
+
+        .dataset-tab-container {
+            display: flex;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .dataset-tab-btn {
+            flex: 1;
+            padding: 20px;
+            font-size: 16px;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.7);
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .dataset-tab-btn:hover {
+            color: rgba(255, 255, 255, 0.9);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .dataset-tab-btn.active {
+            color: rgba(255, 255, 255, 0.95);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .dataset-tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, rgba(139, 92, 246, 0.8), rgba(59, 130, 246, 0.8));
+        }
+
+        .dataset-tab-content {
+            padding: 40px;
+        }
+
+        .dataset-tab-panel {
+            display: none;
+        }
+
+        .dataset-tab-panel.active {
+            display: block;
+            animation: datasetFadeIn 0.4s ease;
+        }
+
+        @keyframes datasetFadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .dataset-form-row {
+            display: flex;
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        .dataset-form-field {
+            flex: 1;
+        }
+
+        .dataset-form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 10px;
+            color: rgba(255, 255, 255, 0.85);
+            letter-spacing: 0.2px;
+        }
+
+        .dataset-form-input {
+            width: 100%;
+            padding: 14px 16px;
+            font-size: 16px;
+            font-family: inherit;
+            color: rgba(255, 255, 255, 0.9);
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 12px;
+            outline: none;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .dataset-form-input::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .dataset-form-input:focus {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(139, 92, 246, 0.5);
+            box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.1);
+        }
+
+        .dataset-form-input:hover {
+            border-color: rgba(255, 255, 255, 0.35);
+        }
+
+        .dataset-upload-area {
+            margin-top: 32px;
+            padding: 60px 40px;
+            border: 2px dashed rgba(255, 255, 255, 0.3);
+            border-radius: 16px;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.05);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .dataset-upload-area:hover {
+            border-color: rgba(139, 92, 246, 0.5);
+            background: rgba(139, 92, 246, 0.08);
+        }
+
+        .dataset-upload-area.dragover {
+            border-color: rgba(139, 92, 246, 0.7);
+            background: rgba(139, 92, 246, 0.12);
+        }
+
+        .dataset-upload-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+        }
+
+        .dataset-upload-icon svg {
+            width: 32px;
+            height: 32px;
+            stroke: rgba(255, 255, 255, 0.8);
+        }
+
+        .dataset-upload-text {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 8px;
+        }
+
+        .dataset-upload-text .browse {
+            color: rgba(139, 92, 246, 0.9);
+            font-weight: 500;
+            text-decoration: underline;
+        }
+
+        .dataset-upload-formats {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .dataset-file-input {
+            display: none;
+        }
+
+        .dataset-upload-button {
+            margin-top: 32px;
+            padding: 16px 48px;
+            border-radius: 14px;
+            font-size: 17px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            color: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.4), rgba(59, 130, 246, 0.4));
+            border: 1px solid rgba(139, 92, 246, 0.5);
+            box-shadow:
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.2),
+                0 4px 20px rgba(139, 92, 246, 0.3);
+            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .dataset-upload-button:hover {
+            transform: translateY(-2px);
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.5), rgba(59, 130, 246, 0.5));
+            box-shadow:
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.25),
+                0 8px 30px rgba(139, 92, 246, 0.4);
+        }
+
+        .dataset-upload-button:active {
+            transform: translateY(0);
+        }
+
+        .dataset-upload-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Manage Tab Styles */
+        .dataset-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .dataset-list-item {
+            padding: 20px 24px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .dataset-list-item:hover {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(139, 92, 246, 0.3);
+        }
+
+        .dataset-item-info {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .dataset-item-name {
+            font-size: 16px;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .dataset-item-meta {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .dataset-item-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .dataset-action-btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.8);
+            transition: all 0.3s ease;
+        }
+
+        .dataset-action-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.3);
+            color: rgba(255, 255, 255, 0.95);
+        }
+
+        .dataset-action-btn.delete:hover {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: rgba(239, 68, 68, 0.5);
+            color: rgba(255, 255, 255, 0.95);
+        }
+
+        .dataset-empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .dataset-empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 16px;
+            opacity: 0.3;
+        }
+
+        @media (max-width: 768px) {
+            .dataset-main-container {
+                padding: 100px 20px 40px;
+            }
+
+            .dataset-page-title {
+                font-size: 36px;
+            }
+
+            .dataset-tab-content {
+                padding: 24px;
+            }
+
+            .dataset-form-row {
+                flex-direction: column;
+                gap: 0;
+            }
+
+            .dataset-upload-area {
+                padding: 40px 20px;
+            }
+
+            .dataset-list-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 16px;
+            }
+
+            .dataset-item-actions {
+                width: 100%;
+            }
+
+            .dataset-action-btn {
+                flex: 1;
+            }
+        }
+    </style>
+</head>
+<body class="dataset-page">
+    <!-- Static Background -->
+    <div class="image-background"></div>
+
+    <!-- Header Logo -->
+    <div class="header-logo">
+        <div class="header-logo-image">
+            <img src="logo.png" alt="MarkLogic Logo">
+        </div>
+        <div class="header-brand">
+            <div class="header-brand-name">MarkLogic</div>
+            <div class="header-slogan">Stop Searching. Start Finding</div>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="dataset-main-container">
+        <h1 class="dataset-page-title">Dataset</h1>
+
+        <div class="dataset-content-box">
+            <!-- Tabs -->
+            <div class="dataset-tab-container">
+                <button class="dataset-tab-btn active" data-tab="upload">Upload</button>
+                <button class="dataset-tab-btn" data-tab="manage">Manage</button>
+            </div>
+
+            <!-- Tab Content -->
+            <div class="dataset-tab-content">
+                <!-- Upload Tab -->
+                <div class="dataset-tab-panel active" id="upload-panel">
+                    <div class="dataset-form-row">
+                        <div class="dataset-form-field">
+                            <label class="dataset-form-label">Batch Number</label>
+                            <input type="text" class="dataset-form-input" placeholder="Enter batch number">
+                        </div>
+                        <div class="dataset-form-field">
+                            <label class="dataset-form-label">Year</label>
+                            <input type="text" class="dataset-form-input" placeholder="Enter year">
+                        </div>
+                    </div>
+
+                    <div class="dataset-upload-area" id="uploadArea">
+                        <input type="file" id="fileInput" class="dataset-file-input" multiple accept=".jpeg,.jpg,.png,.gif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.ai,.word">
+                        <div class="dataset-upload-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M7 18a4.6 4.4 0 0 1 0 -9a5 4.5 0 0 1 11 2h1a3.5 3.5 0 0 1 0 7h-1" />
+                                <polyline points="9 15 12 12 15 15" />
+                                <path d="M12 12v9" />
+                            </svg>
+                        </div>
+                        <div class="dataset-upload-text">
+                            Drag & drop files or <span class="browse">Browse</span>
+                        </div>
+                        <div class="dataset-upload-formats">
+                            Supported formats: JPEG, PNG, GIF, PDF, DOC, XLS, PPT, AI, Word, PPT
+                        </div>
+                    </div>
+
+                    <center>
+                        <button class="dataset-upload-button" id="uploadBtn" disabled>Upload Files</button>
+                    </center>
+                </div>
+
+                <!-- Manage Tab -->
+                <div class="dataset-tab-panel" id="manage-panel">
+                    <div class="dataset-list" id="datasetList">
+                        <!-- Example dataset items -->
+                        <div class="dataset-list-item">
+                            <div class="dataset-item-info">
+                                <div class="dataset-item-name">Trademark Batch #2024-001</div>
+                                <div class="dataset-item-meta">Year: 2024 • Uploaded: Jan 15, 2025 • 1,245 records</div>
+                            </div>
+                            <div class="dataset-item-actions">
+                                <button class="dataset-action-btn">View</button>
+                                <button class="dataset-action-btn">Download</button>
+                                <button class="dataset-action-btn delete">Delete</button>
+                            </div>
+                        </div>
+
+                        <div class="dataset-list-item">
+                            <div class="dataset-item-info">
+                                <div class="dataset-item-name">Trademark Batch #2023-052</div>
+                                <div class="dataset-item-meta">Year: 2023 • Uploaded: Dec 28, 2024 • 987 records</div>
+                            </div>
+                            <div class="dataset-item-actions">
+                                <button class="dataset-action-btn">View</button>
+                                <button class="dataset-action-btn">Download</button>
+                                <button class="dataset-action-btn delete">Delete</button>
+                            </div>
+                        </div>
+
+                        <div class="dataset-list-item">
+                            <div class="dataset-item-info">
+                                <div class="dataset-item-name">Trademark Batch #2023-051</div>
+                                <div class="dataset-item-meta">Year: 2023 • Uploaded: Dec 15, 2024 • 1,532 records</div>
+                            </div>
+                            <div class="dataset-item-actions">
+                                <button class="dataset-action-btn">View</button>
+                                <button class="dataset-action-btn">Download</button>
+                                <button class="dataset-action-btn delete">Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="marklogic.js"></script>
+</body>
+</html>
