@@ -11,12 +11,39 @@
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
-    background: #000;
-    color: #fff;
-    overflow: hidden;
+    background: transparent;
+    color: transparent;
     height: 100vh;
     -webkit-font-smoothing: antialiased;
     position: relative;
+}
+
+html {
+    scrollbar-gutter: stable overlay;
+}
+
+/* Custom Glass Scrollbar for All Pages */
+::-webkit-scrollbar {
+    width: 5px;
+    background: transparent;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: lightgray;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: lightgray;
+}
+
+::-webkit-scrollbar-corner {
+    background: transparent;
+    border-radius: 10px;
 }
 
 /* ==========================================
@@ -29,7 +56,7 @@ body {
     left: 0;
     width: 100vw;
     height: 100vh;
-    z-index: 0;
+    z-index: -1;
     overflow: hidden;
 }
 
@@ -66,7 +93,7 @@ body {
     left: 0;
     width: 100vw;
     height: 100vh;
-    z-index: 0;
+    z-index: -1;
     overflow: hidden;
 }
 
