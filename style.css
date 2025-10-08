@@ -893,6 +893,7 @@ html {
     display: flex;
     gap: 24px;
     margin-bottom: 32px;
+    align-items: end;
 }
 
 .dataset-form-field {
@@ -1239,4 +1240,254 @@ html {
     .dataset-action-btn {
         flex: 1;
     }
+}
+
+/* === Popup Notification === */
+/* === Popup Notification === */
+.upload-popup {
+  position: fixed;
+  top: 40px; /* move to top instead of bottom */
+  left: 50%; /* center horizontally */
+  transform: translate(-50%, -30px); /* center + start slightly up for animation */
+  background: rgba(255, 255, 255, 0.95);
+  color: #222;
+  padding: 14px 22px;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  font-size: 15px;
+  font-weight: 500;
+  opacity: 0;
+  transition: all 0.4s ease;
+  z-index: 9999;
+}
+
+.upload-popup.show {
+  opacity: 1;
+  transform: translate(-50%, 0); /* smooth slide down */
+}
+
+.upload-popup.error {
+  background: rgba(255, 77, 77, 0.95);
+  color: #fff;
+}
+
+/* Manage Tab Styles */
+.manage-search-section {
+    margin-bottom: 32px;
+}
+
+.manage-action-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 24px;
+    justify-content: end;
+}
+
+.manage-search-btn {
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.manage-search-btn svg {
+    width: 22px;
+    height: 22px;
+    stroke: rgba(255, 255, 255, 0.85);
+}
+
+.manage-search-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.manage-delete-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 12px;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.manage-delete-btn svg {
+    width: 18px;
+    height: 18px;
+    stroke: rgba(255, 255, 255, 0.85);
+}
+
+.manage-delete-btn:hover {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: rgba(255, 255, 255, 0.95);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+}
+
+.manage-delete-btn:hover svg {
+    stroke: rgba(255, 255, 255, 0.95);
+}
+
+/* Table Styles */
+.manage-table-container {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+.manage-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.manage-table thead {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.manage-table thead tr {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.manage-table th {
+    padding: 16px 20px;
+    text-align: left;
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.95);
+    letter-spacing: 0.3px;
+}
+
+.manage-table tbody tr {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    transition: background 0.3s ease;
+}
+
+.manage-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.manage-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.manage-table td {
+    padding: 16px 20px;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 15px;
+}
+
+.table-checkbox-col {
+    width: 60px;
+}
+
+.manage-checkbox {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #6458F0;
+    border-radius: 4px;
+}
+
+.dataset-empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.dataset-empty-state svg {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 16px;
+    opacity: 0.3;
+}
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  z-index: 99999;
+}
+
+.confirm-overlay.show {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.confirm-box {
+  background: rgba(255, 255, 255, 0.96);
+  padding: 24px 36px;
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  text-align: center;
+  max-width: 360px;
+  width: 100%;
+  animation: popupFadeIn 0.3s ease;
+}
+
+.confirm-message {
+  font-size: 16px;
+  margin-bottom: 20px;
+  color: #333;
+  font-weight: 500;
+}
+
+.confirm-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+}
+
+.confirm-buttons button {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.confirm-yes {
+  background: #4caf50;
+  color: #fff;
+}
+
+.confirm-no {
+  background: #ccc;
+  color: #222;
+}
+
+.confirm-yes:hover {
+  background: #43a047;
+}
+
+.confirm-no:hover {
+  background: #b0b0b0;
+}
+
+@keyframes popupFadeIn {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
 }

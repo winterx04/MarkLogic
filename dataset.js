@@ -1,157 +1,263 @@
-// === TAB SWITCHING ===
+// =============================
+// === TAB SWITCHING LOGIC ===
+// =============================
 const tabBtns = document.querySelectorAll(".dataset-tab-btn");
 const tabPanels = document.querySelectorAll(".dataset-tab-panel");
 
 tabBtns.forEach((btn) => {
   btn.addEventListener("click", () => {
     const tabName = btn.dataset.tab;
-
-    // Reset active states
     tabBtns.forEach((b) => b.classList.remove("active"));
     tabPanels.forEach((p) => p.classList.remove("active"));
-
-    // Activate selected
     btn.classList.add("active");
     document.getElementById(`${tabName}-panel`).classList.add("active");
   });
 });
 
+// =============================
 // === FILE UPLOAD HANDLING ===
+// =============================
 const uploadArea = document.getElementById("uploadArea");
 const fileInput = document.getElementById("fileInput");
 const uploadBtn = document.getElementById("uploadBtn");
-
 let selectedFiles = [];
 
-// Create file list container
+// Create dynamic file list container
 const fileListContainer = document.createElement("div");
 fileListContainer.classList.add("dataset-file-list");
 uploadArea.insertAdjacentElement("afterend", fileListContainer);
 
-// --- Handle click to browse ---
 uploadArea.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", (e) => addFiles(Array.from(e.target.files)));
 
-// --- Handle file selection ---
-fileInput.addEventListener("change", (e) => {
-  addFiles(Array.from(e.target.files));
-});
-
-// --- Handle drag & drop ---
 uploadArea.addEventListener("dragover", (e) => {
   e.preventDefault();
   uploadArea.classList.add("dragover");
 });
-
-uploadArea.addEventListener("dragleave", () => {
-  uploadArea.classList.remove("dragover");
-});
-
+uploadArea.addEventListener("dragleave", () => uploadArea.classList.remove("dragover"));
 uploadArea.addEventListener("drop", (e) => {
   e.preventDefault();
   uploadArea.classList.remove("dragover");
   addFiles(Array.from(e.dataTransfer.files));
 });
 
-// === Add files to list ===
 function addFiles(newFiles) {
-  // Merge unique files by name and size
-  newFiles.forEach((file) => {
-    if (!selectedFiles.some((f) => f.name === file.name && f.size === file.size)) {
-      selectedFiles.push(file);
-    }
-  });
+  if (selectedFiles.length >= 1) {
+    showPopup("You can only upload one file at a time.", true);
+    return;
+  }
+  if (newFiles.length > 1) {
+    showPopup("Please select only one file.", true);
+    return;
+  }
+
+  const file = newFiles[0];
+  selectedFiles = [file];
   renderFileList();
   updateUploadButton();
 }
 
-// === Render file preview list ===
 function renderFileList() {
   fileListContainer.innerHTML = "";
-
   if (selectedFiles.length === 0) {
     fileListContainer.style.display = "none";
     return;
   }
-
   fileListContainer.style.display = "block";
 
-  selectedFiles.forEach((file, index) => {
-    const item = document.createElement("div");
-    item.classList.add("dataset-file-item");
+  const file = selectedFiles[0];
+  const item = document.createElement("div");
+  item.classList.add("dataset-file-item");
 
-    const icon = document.createElement("div");
-    icon.classList.add("dataset-file-icon");
-    icon.innerHTML = getFileIcon(file.type);
+  const icon = document.createElement("div");
+  icon.classList.add("dataset-file-icon");
+  icon.innerHTML = getFileIcon(file.type);
 
-    const info = document.createElement("div");
-    info.classList.add("dataset-file-info");
-    info.innerHTML = `
-      <div class="dataset-file-name">${file.name}</div>
-      <div class="dataset-file-meta">${formatFileSize(file.size)}</div>
-    `;
+  const info = document.createElement("div");
+  info.classList.add("dataset-file-info");
+  info.innerHTML = `
+    <div class="dataset-file-name">${file.name}</div>
+    <div class="dataset-file-meta">${formatFileSize(file.size)}</div>
+  `;
 
-    const removeBtn = document.createElement("button");
-    removeBtn.classList.add("dataset-remove-icon");
-    removeBtn.innerHTML = `<img src="file-icons/close.png" alt="Remove" class="dataset-remove-icon">`;
-    removeBtn.addEventListener("click", () => removeFile(index));
+  const removeBtn = document.createElement("button");
+  removeBtn.classList.add("dataset-remove-icon");
+  removeBtn.innerHTML = `<img src="file-icons/close.png" alt="Remove" style="width:16px; height:16px; object-fit:contain;">`;
+  removeBtn.addEventListener("click", removeFile);
 
-    item.appendChild(icon);
-    item.appendChild(info);
-    item.appendChild(removeBtn);
-    fileListContainer.appendChild(item);
-  });
+  item.append(icon, info, removeBtn);
+  fileListContainer.appendChild(item);
 }
 
-// === Remove a file ===
-function removeFile(index) {
-  selectedFiles.splice(index, 1);
+function removeFile() {
+  selectedFiles = [];
   renderFileList();
   updateUploadButton();
 }
 
-// === Get file icon based on MIME type ===
-// === Get file icon based on MIME type ===
 function getFileIcon(type) {
-  let iconPath = "file-icons/folder.png"; // default icon
-
-  if (type.startsWith("image/")) {
-    iconPath = "file-icons/image.png";
-  } else if (type.includes("pdf")) {
-    iconPath = "file-icons/pdf.png";
-  } else if (type.includes("word")) {
-    iconPath = "file-icons/word.png";
-  } else if (type.includes("excel") || type.includes("spreadsheet")) {
-    iconPath = "file-icons/excel.png";
-  } else if (type.includes("presentation") || type.includes("powerpoint")) {
-    iconPath = "file-icons/ppt.png";
-  }
-
+  let iconPath = "file-icons/folder.png";
+  if (type.startsWith("image/")) iconPath = "file-icons/image.png";
+  else if (type.includes("pdf")) iconPath = "file-icons/pdf.png";
+  else if (type.includes("word")) iconPath = "file-icons/word.png";
+  else if (type.includes("excel") || type.includes("spreadsheet")) iconPath = "file-icons/excel.png";
+  else if (type.includes("presentation") || type.includes("powerpoint")) iconPath = "file-icons/ppt.png";
   return `<img src="${iconPath}" alt="file icon" class="dataset-file-icon-img">`;
 }
 
-
-// === Format file size ===
 function formatFileSize(bytes) {
   const kb = bytes / 1024;
   if (kb < 1024) return `${kb.toFixed(1)} KB`;
   return `${(kb / 1024).toFixed(1)} MB`;
 }
 
-// === Update upload button text/state ===
 function updateUploadButton() {
   if (selectedFiles.length > 0) {
     uploadBtn.disabled = false;
-    uploadBtn.textContent = `Upload ${selectedFiles.length} File${selectedFiles.length > 1 ? "s" : ""}`;
+    uploadBtn.textContent = "Upload 1 File";
   } else {
     uploadBtn.disabled = true;
-    uploadBtn.textContent = "Upload Files";
+    uploadBtn.textContent = "Upload File";
   }
 }
 
-// === Upload Button Click ===
-uploadBtn.addEventListener("click", () => {
-  if (selectedFiles.length === 0) return;
+// =============================
+// === POPUP NOTIFICATION ===
+// =============================
+function showPopup(message, isError = false) {
+  let popup = document.querySelector(".upload-popup");
+  if (!popup) {
+    popup = document.createElement("div");
+    popup.className = "upload-popup";
+    document.body.appendChild(popup);
+  }
+  popup.textContent = message;
+  popup.classList.add("show");
+  popup.classList.toggle("error", isError);
+  setTimeout(() => popup.classList.remove("show"), 3000);
+}
 
-  alert(`Uploading ${selectedFiles.length} file(s)...`);
-  // TODO: Replace this with your actual upload logic (e.g., fetch or FormData)
+// =============================
+// === VALIDATION ===
+// =============================
+function validateBatchAndYear(batchNumber, year) {
+  const currentYear = new Date().getFullYear();
+  const yearNumber = parseInt(year, 10);
+
+  if (!batchNumber || !year) {
+    showPopup("Please enter both batch number and year.", true);
+    return false;
+  }
+  if (!/^\d{1,2}$/.test(batchNumber)) {
+    showPopup("Batch number must be 1–2 digits.", true);
+    return false;
+  }
+  if (!/^\d{4}$/.test(year) || yearNumber > currentYear) {
+    showPopup(`Year must be a valid 4-digit year not exceeding ${currentYear}.`, true);
+    return false;
+  }
+  return true;
+}
+
+// =============================
+// === UPLOAD TAB ACTION ===
+// =============================
+uploadBtn.addEventListener("click", () => {
+  const batchNumber = document.getElementById("batchNumber").value.trim();
+  const year = document.getElementById("yearInput").value.trim();
+
+  if (!validateBatchAndYear(batchNumber, year)) return;
+  if (selectedFiles.length === 0) {
+    showPopup("Please select a file before uploading.", true);
+    return;
+  }
+
+  showPopup("✅ File uploaded successfully!");
+  selectedFiles = [];
+  renderFileList();
+  updateUploadButton();
+  document.getElementById("batchNumber").value = "";
+  document.getElementById("yearInput").value = "";
 });
+
+// =============================
+// === MANAGE TAB FUNCTIONALITY ===
+// =============================
+
+// Select All Checkbox
+const selectAllCheckbox = document.getElementById("selectAll");
+if (selectAllCheckbox) {
+  selectAllCheckbox.addEventListener("change", (e) => {
+    const checkboxes = document.querySelectorAll(".manage-checkbox:not(#selectAll)");
+    checkboxes.forEach((box) => (box.checked = e.target.checked));
+  });
+}
+
+// Keep Select All in sync
+document.addEventListener("change", (e) => {
+  if (e.target.classList.contains("manage-checkbox") && e.target.id !== "selectAll") {
+    const allBoxes = document.querySelectorAll(".manage-checkbox:not(#selectAll)");
+    const checkedBoxes = document.querySelectorAll(".manage-checkbox:not(#selectAll):checked");
+    if (selectAllCheckbox) selectAllCheckbox.checked = allBoxes.length === checkedBoxes.length;
+  }
+});
+
+// Custom Confirmation Popup
+function showConfirmPopup(message, onConfirm) {
+  let overlay = document.querySelector(".confirm-overlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.className = "confirm-overlay";
+    overlay.innerHTML = `
+      <div class="confirm-box">
+        <p class="confirm-message"></p>
+        <div class="confirm-buttons">
+          <button class="confirm-yes">Yes</button>
+          <button class="confirm-no">No</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+  }
+
+  overlay.querySelector(".confirm-message").textContent = message;
+  overlay.classList.add("show");
+
+  overlay.querySelector(".confirm-yes").onclick = () => {
+    overlay.classList.remove("show");
+    onConfirm();
+  };
+  overlay.querySelector(".confirm-no").onclick = () => overlay.classList.remove("show");
+}
+
+// Delete Button
+const deleteBtn = document.querySelector(".manage-delete-btn");
+if (deleteBtn) {
+  deleteBtn.addEventListener("click", () => {
+    const checked = document.querySelectorAll(".manage-checkbox:not(#selectAll):checked");
+    if (checked.length === 0) {
+      showPopup("Please select at least one file to delete.", true);
+      return;
+    }
+
+    showConfirmPopup(`Are you sure you want to delete ${checked.length} file(s)?`, () => {
+      checked.forEach((c) => c.closest("tr").remove());
+      showPopup(`✅ ${checked.length} file(s) deleted successfully!`);
+      if (selectAllCheckbox) selectAllCheckbox.checked = false;
+    });
+  });
+}
+
+// Search Button
+const searchBtn = document.querySelector(".manage-search-btn");
+if (searchBtn) {
+  searchBtn.addEventListener("click", () => {
+    const batchNumber = document.getElementById("searchBatchNumber").value.trim();
+    const year = document.getElementById("searchYear").value.trim();
+
+    if (!validateBatchAndYear(batchNumber, year)) return;
+
+    showPopup("🔍 Searching for files...");
+    // (Future: Filter table results here)
+  });
+}

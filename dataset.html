@@ -6,7 +6,6 @@
     <title>Dataset</title>
     <link rel="icon" type="image/png" href="favicon.png">
     <link rel="stylesheet" href="style.css">
-    
 </head>
 <body class="dataset-page">
     <!-- Static Background -->
@@ -43,17 +42,17 @@
                     <div class="dataset-form-row">
                         <div class="dataset-form-field">
                             <label class="dataset-form-label">Batch Number</label>
-                            <input type="text" class="dataset-form-input" placeholder="Enter batch number">
+                            <input type="text" id="batchNumber" class="dataset-form-input" placeholder="Enter batch number (max 2 digits)">
                         </div>
                         <div class="dataset-form-field">
                             <label class="dataset-form-label">Year</label>
-                            <input type="text" class="dataset-form-input" placeholder="Enter year">
+                            <input type="text" id="yearInput" class="dataset-form-input" placeholder="Enter year">
                         </div>
                     </div>
 
                     <div class="dataset-upload-area" id="uploadArea">
                         <div id="filePreviewList" class="dataset-file-preview"></div>
-                        <input type="file" id="fileInput" class="dataset-file-input" multiple accept=".jpeg,.jpg,.png,.gif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.ai,.word">
+                        <input type="file" id="fileInput" class="dataset-file-input" accept=".jpeg,.jpg,.png,.gif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.ai,.word">
                         <div class="dataset-upload-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M7 18a4.6 4.4 0 0 1 0 -9a5 4.5 0 0 1 11 2h1a3.5 3.5 0 0 1 0 7h-1" />
@@ -62,7 +61,7 @@
                             </svg>
                         </div>
                         <div class="dataset-upload-text">
-                            Drag & drop files or <span class="browse">Browse</span>
+                            Drag & drop a file or <span class="browse">Browse</span>
                         </div>
                         <div class="dataset-upload-formats">
                             Supported formats: JPEG, PNG, GIF, PDF, DOC, XLS, PPT, AI, Word, PPT
@@ -70,55 +69,91 @@
                     </div>
 
                     <center>
-                        <button class="dataset-upload-button" id="uploadBtn" disabled>Upload Files</button>
+                        <button class="dataset-upload-button" id="uploadBtn" disabled>Upload File</button>
                     </center>
                 </div>
 
                 <!-- Manage Tab -->
                 <div class="dataset-tab-panel" id="manage-panel">
-                    <div class="dataset-list" id="datasetList">
-                        <!-- Example dataset items -->
-                        <div class="dataset-list-item">
-                            <div class="dataset-item-info">
-                                <div class="dataset-item-name">Trademark Batch #2024-001</div>
-                                <div class="dataset-item-meta">Year: 2024 • Uploaded: Jan 15, 2025 • 1,245 records</div>
+                    <!-- Search and Filter Section -->
+                    <div class="manage-search-section">
+                        <div class="dataset-form-row">
+                            <div class="dataset-form-field">
+                                <label class="dataset-form-label">Batch Number</label>
+                                <input type="text" id="searchBatchNumber" class="dataset-form-input" placeholder="Enter batch number">
                             </div>
-                            <div class="dataset-item-actions">
-                                <button class="dataset-action-btn">View</button>
-                                <button class="dataset-action-btn">Download</button>
-                                <button class="dataset-action-btn delete">Delete</button>
+                            <div class="dataset-form-field">
+                                <label class="dataset-form-label">Year</label>
+                                <input type="text" id="searchYear" class="dataset-form-input" placeholder="Enter year">
                             </div>
+                            <button class="manage-search-btn">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="11" cy="11" r="8"></circle>
+                                    <path d="m21 21-4.35-4.35"></path>
+                                </svg>
+                            </button>
                         </div>
+                        <div class="manage-action-row">
+                            <!-- <button class="manage-search-btn">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="11" cy="11" r="8"></circle>
+                                    <path d="m21 21-4.35-4.35"></path>
+                                </svg>
+                            </button> -->
+                            <button class="manage-delete-btn">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M3 6h18"></path>
+                                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                                </svg>
+                                Delete
+                            </button>
+                        </div>
+                    </div>
 
-                        <div class="dataset-list-item">
-                            <div class="dataset-item-info">
-                                <div class="dataset-item-name">Trademark Batch #2023-052</div>
-                                <div class="dataset-item-meta">Year: 2023 • Uploaded: Dec 28, 2024 • 987 records</div>
-                            </div>
-                            <div class="dataset-item-actions">
-                                <button class="dataset-action-btn">View</button>
-                                <button class="dataset-action-btn">Download</button>
-                                <button class="dataset-action-btn delete">Delete</button>
-                            </div>
-                        </div>
-
-                        <div class="dataset-list-item">
-                            <div class="dataset-item-info">
-                                <div class="dataset-item-name">Trademark Batch #2023-051</div>
-                                <div class="dataset-item-meta">Year: 2023 • Uploaded: Dec 15, 2024 • 1,532 records</div>
-                            </div>
-                            <div class="dataset-item-actions">
-                                <button class="dataset-action-btn">View</button>
-                                <button class="dataset-action-btn">Download</button>
-                                <button class="dataset-action-btn delete">Delete</button>
-                            </div>
-                        </div>
+                    <!-- File Table -->
+                    <div class="manage-table-container">
+                        <table class="manage-table">
+                            <thead>
+                                <tr>
+                                    <th class="table-checkbox-col">
+                                        <input type="checkbox" id="selectAll" class="manage-checkbox">
+                                    </th>
+                                    <th>File Name</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fileTableBody">
+                                <tr>
+                                    <td class="table-checkbox-col">
+                                        <input type="checkbox" class="manage-checkbox">
+                                    </td>
+                                    <td>Dustin</td>
+                                </tr>
+                                <tr>
+                                    <td class="table-checkbox-col">
+                                        <input type="checkbox" class="manage-checkbox">
+                                    </td>
+                                    <td>Mark</td>
+                                </tr>
+                                <tr>
+                                    <td class="table-checkbox-col">
+                                        <input type="checkbox" class="manage-checkbox">
+                                    </td>
+                                    <td>Buzz</td>
+                                </tr>
+                                <tr>
+                                    <td class="table-checkbox-col">
+                                        <input type="checkbox" class="manage-checkbox">
+                                    </td>
+                                    <td>Cynthia</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-
     <script src="dataset.js"></script>
 </body>
 </html>
