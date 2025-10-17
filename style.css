@@ -50,7 +50,7 @@ html {
    VIDEO BACKGROUND
    ========================================== */
 
-.video-background {
+/* .video-background {
     position: fixed;
     top: 0;
     left: 0;
@@ -84,7 +84,44 @@ html {
     backdrop-filter: blur(5px);
     -webkit-backdrop-filter: blur(5px);
     pointer-events: none;
+} */
+
+.video-background {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  overflow: hidden;
 }
+
+.video-background video {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* ✨ Keeps aspect ratio, covers background */
+  transform: translate(-50%, -50%);
+  filter: brightness(0.6) contrast(1.05) saturate(1.2);
+}
+
+/* Optional glassy overlay for clarity */
+.video-background::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom right,
+    rgba(255, 255, 255, 0.25),
+    rgba(240, 240, 255, 0.15)
+  );
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  pointer-events: none;
+}
+
 
 /* Static background image (replaces video) */
 .image-background {
