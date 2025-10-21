@@ -184,7 +184,7 @@
         </div>
     </div>
 
-        <!-- Detail Modal -->
+    <!-- Detail Modal -->
     <div class="detail-modal" id="detailModal">
       <div class="detail-modal-content">
         <button class="detail-modal-close" id="modalClose">&times;</button>
@@ -196,13 +196,17 @@
           </svg>
           Download Report
         </button>
-        
-        <div class="detail-modal-header">
-          <div class="detail-modal-image">
-            <img id="modalImage" src="icons/trademark-1.png" alt="Trademark">
+
+        <div class="detail-modal-body">
+          <div class="detail-modal-left">
+            <div class="detail-modal-image">
+              <img id="modalImage" src="icons/trademark-1.png" alt="Trademark">
+            </div>
           </div>
-          <div class="detail-modal-info">
+
+          <div class="detail-modal-right">
             <h2 id="modalCompanyName">Company Name</h2>
+
             <div class="detail-modal-similarities">
               <div class="detail-similarity-item">
                 <span class="detail-similarity-label">Image Similarity</span>
@@ -213,38 +217,68 @@
                 <span class="detail-similarity-value" id="modalTextSim">70%</span>
               </div>
             </div>
-          </div>
-        </div>
 
-        <div class="detail-modal-fields">
-          <div class="detail-field">
-            <span class="detail-field-label">Trademark Number:</span>
-            <span class="detail-field-value" id="modalTrademarkNum">-</span>
-          </div>
-          <div class="detail-field">
-            <span class="detail-field-label">Class:</span>
-            <span class="detail-field-value" id="modalClass">-</span>
-          </div>
-          <div class="detail-field">
-            <span class="detail-field-label">Agent:</span>
-            <span class="detail-field-value" id="modalAgent">-</span>
+            <div class="detail-modal-meta">
+              <span><strong>Trademark Number:</strong> <span id="modalTrademarkNum">2018002150</span></span>
+              <span><strong>Class:</strong> <span id="modalClass">35</span></span>
+              <span><strong>Agent:</strong> <span id="modalAgent">CM LIEW ENTERPRISE SDN. BHD.</span></span>
+            </div>
           </div>
         </div>
 
         <div class="detail-modal-description">
           <h3>Description</h3>
-          <p id="modalDescription">-</p>
+          <p id="modalDescription">Registration of this trademark shall give no right to the exclusive use of the letters ‘cm’ and the words ‘auto electrical in alternator & starter motor’. Business management, business administration, advertising in retail outlet relating of alternator, starter motor, ignition distributor and spare parts (automotive); All included in class 35. </p>
         </div>
 
         <div class="detail-modal-matches">
           <h3>Top 3 Matches:</h3>
-          <div id="modalMatchesList"></div>
+          <div id="modalMatchesList">
+            <!-- Match Item 1 -->
+            <div class="match-item">
+              <div class="match-left">
+                <div class="match-badge">Text Similarity: 100.00%</div>
+                <div class="match-badge">Logo Similarity: 100.00%</div>
+                <div class="match-title">UNITED DETERGENT INDUSTRIES SDN. BHD. ; Lot 2,</div>
+                <div class="match-meta">Serial: 07029604 | Class: 3</div>
+                <div class="match-desc">Similarity is driven by both text (100%) and logo (100%).</div>
+              </div>
+              <div class="match-image">
+                <img src="icons/trademark-1.png" alt="Match Logo">
+              </div>
+            </div>
+
+            <!-- Match Item 2 -->
+            <div class="match-item">
+              <div class="match-left">
+                <div class="match-badge">Text Similarity: 10.81%</div>
+                <div class="match-badge">Logo Similarity: 0.00%</div>
+                <div class="match-title">L T L CORPORATION SDN BHD ; 130, Persiaran Raja Muda</div>
+                <div class="match-meta">Serial: TM2025014914 | Class: 19</div>
+                <div class="match-desc">Similarity is driven by both text (11%) and logo (0%).</div>
+              </div>
+              <div class="match-image">
+                <img src="icons/trademark-2.png" alt="Match Logo">
+              </div>
+            </div>
+
+            <!-- Match Item 3 -->
+            <div class="match-item">
+              <div class="match-left">
+                <div class="match-badge">Text Similarity: 8.94%</div>
+                <div class="match-badge">Logo Similarity: 0.00%</div>
+                <div class="match-title">L T L CORPORATION SDN BHD ; 130, Persiaran Raja Muda Musa, Jalan Teluk Gadong, 41200</div>
+                <div class="match-meta">Serial: TM2025014926 | Class: 11</div>
+                <div class="match-desc">Similarity is driven by both text (9%) and logo (0%).</div>
+              </div>
+              <div class="match-image">
+                <img src="icons/trademark-3.png" alt="Match Logo">
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-
-  </div>
 
   <script src="compare.js"></script>
 </body>

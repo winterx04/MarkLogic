@@ -202,9 +202,37 @@ compareBtn.addEventListener("click", () => {
 
       // 🧩 Generate new cards dynamically (you can adjust content later)
       const newResults = [
-        { img: "icons/trademark-1.png", label: "CM LIEW ENTERPRISE SDN. BHD. ", imgSim: 70, textSim: 70 },
-        { img: "icons/trademark-2.png", label: "DAPPER CORPORATION SDN. BHD. ", imgSim: 90, textSim: 30 },
-        { img: "icons/trademark-3.png", label: "JOHN HOLLAND GROUP PTY LTD", imgSim: 20, textSim: 85 }
+        { 
+          img: "icons/trademark-1.png", 
+          label: "CM LIEW ENTERPRISE SDN. BHD. ", 
+          imgSim: 70, 
+          textSim: 70, 
+          modalTrademarkNum: "2018002150", 
+          modalClass: "35", 
+          modalAgent: "CM LIEW ENTERPRISE SDN. BHD.", 
+          modalDescription: "Registration of this trademark shall give no right to the exclusive use of the letters ‘cm’ and the words ‘auto electrical in alternator & starter motor’. Business management, business administration, advertising in retail outlet relating of alternator, starter motor, ignition distributor and spare parts (automotive); All included in class 35." 
+        },
+        {
+          img: "icons/trademark-2.png",
+          label: "DAPPER CORPORATION SDN. BHD.",
+          imgSim: 90,
+          textSim: 30,
+          modalTrademarkNum: "TM2019037183",
+          modalClass: "35",
+          modalAgent: "No Agent",
+          modalDescription: 'Registration of this trade mark shall give no right to the exclusive use of letters "df" and the word "denim". Retail and wholesale for selling clothing, footwear, headgear bags, belt; all included in class 35.'
+        },
+
+        { 
+          img: "icons/trademark-3.png", 
+          label: "JOHN HOLLAND GROUP PTY LTD", 
+          imgSim: 20, 
+          textSim: 85 ,
+          modalTrademarkNum: "2018060412",
+          modalClass: "36",
+          modalAgent: "SHOOK LIN & BOK, 20th Floor, AmBank Group Building, 55 Jalan Raja Chulan, 50200 Kuala Lumpur",
+          modalDescription: 'International priority date claimed : 23 April 2018, Honduras Acquisition for financial investment; Administration of investment funds; Administration of investments; Arranging finance for construction projects; Capital fund investment; Commercial property investment services; Financial asset management; Financial investment; Leasing of property; Provision of housing accommodation; Real estate investment; Real estate services relating to property development; Rental of accommodation; Rental of apartments; Rental of commercial premises; Rental of offices; Rental of property; Rental of real estate; All included in class 36.'
+        }
       ];
 
       newResults.forEach(result => {
@@ -273,6 +301,10 @@ function openDetailModal(data) {
   document.getElementById("modalCompanyName").textContent = data.label;
   document.getElementById("modalImageSim").textContent = `${data.imgSim}%`;
   document.getElementById("modalTextSim").textContent = `${data.textSim}%`;
+  document.getElementById("modalTrademarkNum").textContent = `${data.modalTrademarkNum}`;
+  document.getElementById("modalClass").textContent = `${data.modalClass}`;
+  document.getElementById("modalAgent").textContent = `${data.modalAgent}`;
+  document.getElementById("modalDescription").textContent = `${data.modalDescription}%`;
 
   // Show modal
   detailModal.classList.add("show");
@@ -292,4 +324,15 @@ detailModal.addEventListener("click", (e) => {
 
 document.getElementById("modalDownload").addEventListener("click", () => {
   showPopup("📄 Downloading report...");
+});
+
+document.querySelectorAll('.match-badge').forEach(badge => {
+  const matchText = badge.textContent;
+  const matchValue = parseFloat(matchText.match(/([\d.]+)%/)[1]); // extract number before '%'
+  
+  if (matchValue > 50) {
+    badge.classList.add('high'); // red
+  } else {
+    badge.classList.remove('high'); // light grey
+  }
 });
