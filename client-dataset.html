@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Dataset</title>
+    <link rel="icon" type="image/png" href="icons/favicon.png">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="dataset-page">
+    <!-- Static Background -->
+    <div class="image-background"></div>
+
+    <!-- Header Logo -->
+    <a href="menu.html" class="header-logo-link" style="text-decoration: none; color: inherit;">
+        <div class="header-logo">
+            <div class="header-logo-image">
+                <img src="icons/logo.png" alt="MarkLogic Logo">
+            </div>
+            <div class="header-brand">
+                <div class="header-brand-name">MarkLogic</div>
+                <div class="header-slogan">Stop Searching. Start Finding</div>
+            </div>
+        </div>
+    </a>
+
+    <!-- Main Container -->
+    <div class="dataset-main-container">
+        <h1 class="dataset-page-title">Client Dataset</h1>
+        <!-- Tabs -->
+        <div class="dataset-tab-container">
+            <button class="dataset-tab-btn active" data-tab="upload">Upload</button>
+            <button class="dataset-tab-btn" data-tab="manage">Manage</button>
+        </div>
+        <div class="dataset-content-box">
+            <!-- Tab Content -->
+            <div class="dataset-tab-content">
+                <!-- Upload Tab -->
+                <div class="dataset-tab-panel active" id="upload-panel">
+                    <div class="dataset-form-row">
+                        <div class="dataset-form-field">
+                            <label class="dataset-form-label">File Name (Optional)</label>
+                            <input type="text" id="fileName" class="dataset-form-input" placeholder="Enter custom file name">
+                        </div>
+                    </div>
+
+                    <div class="dataset-upload-area" id="uploadArea">
+                        <div id="filePreviewList" class="dataset-file-preview"></div>
+                        <input type="file" id="fileInput" class="dataset-file-input" accept=".jpeg,.jpg,.png,.gif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.ai,.word">
+                        <div class="dataset-upload-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M7 18a4.6 4.4 0 0 1 0 -9a5 4.5 0 0 1 11 2h1a3.5 3.5 0 0 1 0 7h-1" />
+                                <polyline points="9 15 12 12 15 15" />
+                                <path d="M12 12v9" />
+                            </svg>
+                        </div>
+                        <div class="dataset-upload-text">
+                            Drag & drop a file or <span class="browse">Browse</span>
+                        </div>
+                        <div class="dataset-upload-formats">
+                            Supported formats: JPEG, PNG, GIF, PDF, DOC, XLS, PPT, AI, Word, PPT
+                        </div>
+                    </div>
+
+                    <center>
+                        <button class="dataset-upload-button" id="uploadBtn" disabled>Upload File</button>
+                    </center>
+                </div>
+
+                <!-- Manage Tab -->
+                <div class="dataset-tab-panel" id="manage-panel">
+                    <!-- Search and Filter Section -->
+                    <div class="manage-search-section">
+                        <div class="dataset-form-row">
+                            <div class="dataset-form-field">
+                                <label class="dataset-form-label">Search File Name</label>
+                                <input type="text" id="searchFileName" class="dataset-form-input" placeholder="Enter file name">
+                            </div>
+                            <button class="manage-search-btn">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="11" cy="11" r="8"></circle>
+                                    <path d="m21 21-4.35-4.35"></path>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="manage-action-row">
+                            <button class="manage-delete-btn">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M3 6h18"></path>
+                                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                                </svg>
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- File Table -->
+                    <div class="manage-table-container">
+                        <table class="manage-table">
+                            <thead>
+                                <tr>
+                                    <th class="table-checkbox-col">
+                                        <input type="checkbox" id="selectAll" class="manage-checkbox">
+                                    </th>
+                                    <th>File Name</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fileTableBody">
+                                <tr>
+                                    <td class="table-checkbox-col">
+                                        <input type="checkbox" class="manage-checkbox">
+                                    </td>
+                                    <td>trademark_logo_001.png</td>
+                                </tr>
+                                <tr>
+                                    <td class="table-checkbox-col">
+                                        <input type="checkbox" class="manage-checkbox">
+                                    </td>
+                                    <td>client_mark_abc.pdf</td>
+                                </tr>
+                                <tr>
+                                    <td class="table-checkbox-col">
+                                        <input type="checkbox" class="manage-checkbox">
+                                    </td>
+                                    <td>company_logo_xyz.jpg</td>
+                                </tr>
+                                <tr>
+                                    <td class="table-checkbox-col">
+                                        <input type="checkbox" class="manage-checkbox">
+                                    </td>
+                                    <td>brand_image_2024.png</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="client-dataset.js"></script>
+</body>
+</html>

@@ -429,7 +429,7 @@
             </a>
 
             <!-- Menu Card 3 -->
-            <a href="dataset.html" class="menu-card">
+            <a href="#" class="menu-card" id="datasetMenuCard">
                 <div class="menu-icon">
                     <img src="icons/dataset.png" alt="Integration Icon">
                 </div>
@@ -448,5 +448,41 @@
             </a>
         </div>
     </div>
+
+    <!-- Dataset Modal -->
+    <div class="dataset-modal-overlay" id="datasetModal">
+        <div class="dataset-modal-box">
+            <h2 class="dataset-modal-title">Choose Dataset</h2>
+            <p class="dataset-modal-subtitle">Select which dataset you would like to access</p>
+            <div class="dataset-modal-buttons">
+                <a href="client-dataset.html?type=client" class="dataset-modal-btn">Client Dataset</a>
+                <a href="dataset.html?type=myipo" class="dataset-modal-btn">MYIPO Dataset</a>
+                <button class="dataset-modal-btn dataset-modal-cancel" id="modalCancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+        <script>
+        const datasetMenuCard = document.getElementById('datasetMenuCard');
+        const datasetModal = document.getElementById('datasetModal');
+        const modalCancel = document.getElementById('modalCancel');
+
+        // Show modal when dataset card is clicked
+        datasetMenuCard.addEventListener('click', (e) => {
+            e.preventDefault();
+            datasetModal.classList.add('show');
+        });
+
+        // Close modal when cancel is clicked
+        modalCancel.addEventListener('click', () => {
+            datasetModal.classList.remove('show');
+        });
+
+        // Close modal when clicking outside
+        datasetModal.addEventListener('click', (e) => {
+            if (e.target === datasetModal) {
+                datasetModal.classList.remove('show');
+            }
+        });
+    </script>
 </body>
 </html>
