@@ -202,23 +202,41 @@ compareBtn.addEventListener("click", () => {
 
       // 🧩 Generate new cards dynamically (you can adjust content later)
       const newResults = [
-        { img: "logo-1.jpg", label: "Company 1", value: "70%" },
-        { img: "logo-2.jpg", label: "Company 2", value: "90%" },
-        { img: "logo-3.jpg", label: "Company 3", value: "20%" }
+        { img: "icons/trademark-1.png", label: "CM LIEW ENTERPRISE SDN. BHD. ", imgSim: 70, textSim: 70 },
+        { img: "icons/trademark-2.png", label: "DAPPER CORPORATION SDN. BHD. ", imgSim: 90, textSim: 30 },
+        { img: "icons/trademark-3.png", label: "JOHN HOLLAND GROUP PTY LTD", imgSim: 20, textSim: 85 }
       ];
 
       newResults.forEach(result => {
         const card = document.createElement("div");
         card.className = "result-card";
+        
+        const imgClass = result.imgSim > 50 ? "high" : "low";
+        const textClass = result.textSim > 50 ? "high" : "low";
+        
         card.innerHTML = `
           <div class="card-top">
             <div class="card-icon"><img src="${result.img}" alt="${result.label} Icon"></div>
-            <div class="card-percentage">${result.value}</div>
+            <div class="card-label">${result.label}</div>
+            <div class="card-similarities">
+              <div class="similarity-item">
+                <span class="similarity-label">Image Similarity</span>
+                <span class="similarity-percentage ${imgClass}">${result.imgSim}%</span>
+              </div>
+              <div class="similarity-item">
+                <span class="similarity-label">Text Similarity</span>
+                <span class="similarity-percentage ${textClass}">${result.textSim}%</span>
+              </div>
+            </div>
           </div>
-          <div class="card-label">${result.label}</div>
         `;
+
+        // 🟢 ADD THIS — open modal on click
+        card.addEventListener("click", () => openDetailModal(result));
+
         resultsGrid.appendChild(card);
       });
+
 
       // ✅ Show fresh result section
       resultsSection.classList.add("show");
@@ -244,3 +262,34 @@ function showPopup(message, isError = false) {
 
 updateVisualState();
 updateButtonState();
+
+// ===== DETAIL MODAL FUNCTIONALITY =====
+const detailModal = document.getElementById("detailModal");
+const modalClose = document.getElementById("modalClose");
+
+function openDetailModal(data) {
+  // Fill in modal data (customize as needed)
+  document.getElementById("modalImage").src = data.img;
+  document.getElementById("modalCompanyName").textContent = data.label;
+  document.getElementById("modalImageSim").textContent = `${data.imgSim}%`;
+  document.getElementById("modalTextSim").textContent = `${data.textSim}%`;
+
+  // Show modal
+  detailModal.classList.add("show");
+}
+
+function closeDetailModal() {
+  detailModal.classList.remove("show");
+}
+
+// Close button
+modalClose.addEventListener("click", closeDetailModal);
+
+// Close when clicking outside modal content
+detailModal.addEventListener("click", (e) => {
+  if (e.target === detailModal) closeDetailModal();
+});
+
+document.getElementById("modalDownload").addEventListener("click", () => {
+  showPopup("📄 Downloading report...");
+});

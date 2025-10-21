@@ -126,31 +126,124 @@
         </div>
 
         <div class="results-grid">
-            <div class="result-card">
-                <div class="card-top">
-                    <div class="card-icon"><img src="icons/logo-1.jpg" alt="Logo 1"></div>
-                    <div class="card-percentage">70%</div>
-                </div>
+          <div class="result-card">
+              <div class="card-top">
+                  <div class="card-icon">
+                      <img src="icons/trademark-1.png" alt="Logo 1">
+                  </div>
+                  <div class="card-similarities">
+                      <div class="similarity-item">
+                          <span class="similarity-label">Image Similarity</span>
+                          <span class="similarity-percentage">70%</span>
+                      </div>
+                      <div class="similarity-item">
+                          <span class="similarity-label">Text Similarity</span>
+                          <span class="similarity-percentage">70%</span>
+                      </div>
+                  </div>
                 <div class="card-label">Company 1</div>
                 </div>
 
                 <div class="result-card">
                 <div class="card-top">
-                    <div class="card-icon"><img src="icons/logo-2.jpg" alt="Logo 2"></div>
-                    <div class="card-percentage">90%</div>
+                    <div class="card-icon">
+                      <img src="icons/trademark-1.png" alt="Logo 1">
+                  </div>
+                  <div class="card-similarities">
+                      <div class="similarity-item">
+                          <span class="similarity-label">Image Similarity</span>
+                          <span class="similarity-percentage">70%</span>
+                      </div>
+                      <div class="similarity-item">
+                          <span class="similarity-label">Text Similarity</span>
+                          <span class="similarity-percentage">70%</span>
+                      </div>
+                  </div>
                 </div>
                 <div class="card-label">Company 2</div>
                 </div>
 
                 <div class="result-card">
                 <div class="card-top">
-                    <div class="card-icon"><img src="icons/logo-3.jpg" alt="Logo 3"></div>
-                    <div class="card-percentage">20%</div>
+                    <div class="card-icon">
+                      <img src="icons/trademark-1.png" alt="Logo 1">
+                  </div>
+                  <div class="card-similarities">
+                      <div class="similarity-item">
+                          <span class="similarity-label">Image Similarity</span>
+                          <span class="similarity-percentage">70%</span>
+                      </div>
+                      <div class="similarity-item">
+                          <span class="similarity-label">Text Similarity</span>
+                          <span class="similarity-percentage">70%</span>
+                      </div>
+                  </div>
                 </div>
                 <div class="card-label">Company 3</div>
             </div>
         </div>
     </div>
+
+        <!-- Detail Modal -->
+    <div class="detail-modal" id="detailModal">
+      <div class="detail-modal-content">
+        <button class="detail-modal-close" id="modalClose">&times;</button>
+        <button class="detail-modal-download" id="modalDownload">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          Download Report
+        </button>
+        
+        <div class="detail-modal-header">
+          <div class="detail-modal-image">
+            <img id="modalImage" src="icons/trademark-1.png" alt="Trademark">
+          </div>
+          <div class="detail-modal-info">
+            <h2 id="modalCompanyName">Company Name</h2>
+            <div class="detail-modal-similarities">
+              <div class="detail-similarity-item">
+                <span class="detail-similarity-label">Image Similarity</span>
+                <span class="detail-similarity-value" id="modalImageSim">70%</span>
+              </div>
+              <div class="detail-similarity-item">
+                <span class="detail-similarity-label">Text Similarity</span>
+                <span class="detail-similarity-value" id="modalTextSim">70%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-modal-fields">
+          <div class="detail-field">
+            <span class="detail-field-label">Trademark Number:</span>
+            <span class="detail-field-value" id="modalTrademarkNum">-</span>
+          </div>
+          <div class="detail-field">
+            <span class="detail-field-label">Class:</span>
+            <span class="detail-field-value" id="modalClass">-</span>
+          </div>
+          <div class="detail-field">
+            <span class="detail-field-label">Agent:</span>
+            <span class="detail-field-value" id="modalAgent">-</span>
+          </div>
+        </div>
+
+        <div class="detail-modal-description">
+          <h3>Description</h3>
+          <p id="modalDescription">-</p>
+        </div>
+
+        <div class="detail-modal-matches">
+          <h3>Top 3 Matches:</h3>
+          <div id="modalMatchesList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   </div>
 
   <script src="compare.js"></script>
