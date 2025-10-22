@@ -42,6 +42,10 @@
                             <label class="dataset-form-label">File Name (Optional)</label>
                             <input type="text" id="fileName" class="dataset-form-input" placeholder="Enter custom file name">
                         </div>
+                        <div class="dataset-form-field">
+                            <label class="dataset-form-label">Date <span style="color: #e74c3c;">*</span></label>
+                            <input type="date" id="fileDate" class="dataset-form-input" required>
+                        </div>
                     </div>
 
                     <div class="dataset-upload-area" id="uploadArea">
@@ -76,6 +80,10 @@
                                 <label class="dataset-form-label">Search File Name</label>
                                 <input type="text" id="searchFileName" class="dataset-form-input" placeholder="Enter file name">
                             </div>
+                            <div class="dataset-form-field">
+                                <label class="dataset-form-label">Search Date</label>
+                                <input type="date" id="searchDate" class="dataset-form-input">
+                            </div>
                             <button class="manage-search-btn">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <circle cx="11" cy="11" r="8"></circle>
@@ -84,6 +92,13 @@
                             </button>
                         </div>
                         <div class="manage-action-row">
+                            <button class="manage-reset-btn" id="resetSearchBtn">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                                    <path d="M3 3v5h5"></path>
+                                </svg>
+                                Reset
+                            </button>
                             <button class="manage-delete-btn">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <path d="M3 6h18"></path>
@@ -104,6 +119,7 @@
                                         <input type="checkbox" id="selectAll" class="manage-checkbox">
                                     </th>
                                     <th>File Name</th>
+                                    <th>Date</th>
                                 </tr>
                             </thead>
                             <tbody id="fileTableBody">
@@ -112,24 +128,28 @@
                                         <input type="checkbox" class="manage-checkbox">
                                     </td>
                                     <td>trademark_logo_001.png</td>
+                                    <td>2024-01-15</td>
                                 </tr>
                                 <tr>
                                     <td class="table-checkbox-col">
                                         <input type="checkbox" class="manage-checkbox">
                                     </td>
                                     <td>client_mark_abc.pdf</td>
+                                    <td>2024-02-20</td>
                                 </tr>
                                 <tr>
                                     <td class="table-checkbox-col">
                                         <input type="checkbox" class="manage-checkbox">
                                     </td>
                                     <td>company_logo_xyz.jpg</td>
+                                    <td>2024-03-10</td>
                                 </tr>
                                 <tr>
                                     <td class="table-checkbox-col">
                                         <input type="checkbox" class="manage-checkbox">
                                     </td>
                                     <td>brand_image_2024.png</td>
+                                    <td>2024-04-05</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -139,5 +159,6 @@
         </div>
     </div>
     <script src="client-dataset.js"></script>
+    <script src="datepicker.js"></script>
 </body>
 </html>

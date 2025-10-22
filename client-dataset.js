@@ -140,12 +140,17 @@ function showPopup(message, isError = false) {
 // =============================
 // === UPLOAD TAB ACTION ===
 // =============================
-// =============================
-// === UPLOAD TAB ACTION ===
-// =============================
 uploadBtn.addEventListener("click", () => {
   const fileNameInput = document.getElementById("fileName");
+  const fileDateInput = document.getElementById("fileDate");
   const fileName = fileNameInput.value.trim();
+  const fileDate = fileDateInput.value;
+
+  // Validate date is filled
+  if (!fileDate) {
+    showPopup("Please select a date before uploading.", true);
+    return;
+  }
 
   if (selectedFiles.length === 0) {
     showPopup("Please select a file before uploading.", true);
@@ -159,7 +164,7 @@ uploadBtn.addEventListener("click", () => {
 
   // If no new name entered → use the same file name directly
   if (!fileName) {
-    showPopup(`✅ File "${originalName}" uploaded successfully!`);
+    showPopup(`✅ File "${originalName}" uploaded successfully with date ${fileDate}!`);
     resetUploadUI();
     return;
   }
@@ -169,12 +174,12 @@ uploadBtn.addEventListener("click", () => {
     showConfirmPopup(
       `Are you sure you want to rename "${baseOriginalName}${extension}" to "${fileName}${extension}" before uploading?`,
       () => {
-        showPopup(`✅ File name changed to "${fileName}${extension}" and uploaded successfully!`);
+        showPopup(`✅ File name changed to "${fileName}${extension}" and uploaded successfully with date ${fileDate}!`);
         resetUploadUI();
       }
     );
   } else {
-    showPopup(`✅ File "${originalName}" uploaded successfully!`);
+    showPopup(`✅ File "${originalName}" uploaded successfully with date ${fileDate}!`);
     resetUploadUI();
   }
 });
@@ -185,6 +190,7 @@ function resetUploadUI() {
   renderFileList();
   updateUploadButton();
   document.getElementById("fileName").value = "";
+  document.getElementById("fileDate").value = "";
 }
 
 // =============================
@@ -260,13 +266,57 @@ const searchBtn = document.querySelector(".manage-search-btn");
 if (searchBtn) {
   searchBtn.addEventListener("click", () => {
     const searchTerm = document.getElementById("searchFileName").value.trim();
+    const searchDate = document.getElementById("searchDate").value;
+    const rows = document.querySelectorAll("#fileTableBody tr");
 
-    if (!searchTerm) {
-      showPopup("Please enter a file name to search.", true);
+    // If both fields are empty
+    if (!searchTerm && !searchDate) {
+      showPopup("Please enter a file name or select a date to search.", true);
       return;
     }
 
-    showPopup(`🔍 Searching for "${searchTerm}"...`);
-    // (Future: Filter table results here)
+    let foundCount = 0;
+
+    rows.forEach(row => {
+      const fileName = row.cells[1].textContent.toLowerCase();
+      const fileDate = row.cells[2].textContent;
+      
+      const matchesName = !searchTerm || fileName.includes(searchTerm.toLowerCase());
+      const matchesDate = !searchDate || fileDate === searchDate;
+
+      if (matchesName && matchesDate) {
+        row.style.display = "";
+        foundCount++;
+      } else {
+        row.style.display = "none";
+      }
+    });
+
+    if (foundCount === 0) {
+      showPopup("No files found matching your search criteria.", true);
+    } else {
+      const criteria = [];
+      if (searchTerm) criteria.push(`name "${searchTerm}"`);
+      if (searchDate) criteria.push(`date "${searchDate}"`);
+      showPopup(`🔍 Found ${foundCount} file(s) matching ${criteria.join(" and ")}`);
+    }
+  });
+}
+
+// Reset Search Button
+const resetSearchBtn = document.getElementById("resetSearchBtn");
+if (resetSearchBtn) {
+  resetSearchBtn.addEventListener("click", () => {
+    // Clear search inputs
+    document.getElementById("searchFileName").value = "";
+    document.getElementById("searchDate").value = "";
+    
+    // Show all rows
+    const rows = document.querySelectorAll("#fileTableBody tr");
+    rows.forEach(row => {
+      row.style.display = "";
+    });
+    
+    showPopup("🔄 Search filters cleared. Showing all files.");
   });
 }

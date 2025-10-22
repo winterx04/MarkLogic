@@ -254,10 +254,56 @@ if (searchBtn) {
   searchBtn.addEventListener("click", () => {
     const batchNumber = document.getElementById("searchBatchNumber").value.trim();
     const year = document.getElementById("searchYear").value.trim();
+    const rows = document.querySelectorAll("#fileTableBody tr");
 
-    if (!validateBatchAndYear(batchNumber, year)) return;
+    if (!batchNumber && !year) {
+      showPopup("Please enter batch number or year to search.", true);
+      return;
+    }
 
-    showPopup("🔍 Searching for files...");
-    // (Future: Filter table results here)
+    let foundCount = 0;
+
+    rows.forEach(row => {
+      const fileName = row.cells[1].textContent; // e.g., "1/2025.pdf"
+      const [fileBatch, fileYear] = fileName.split('/');
+      const fileYearClean = fileYear.replace('.pdf', '');
+      
+      const matchesBatch = !batchNumber || fileBatch === batchNumber;
+      const matchesYear = !year || fileYearClean === year;
+
+      if (matchesBatch && matchesYear) {
+        row.style.display = "";
+        foundCount++;
+      } else {
+        row.style.display = "none";
+      }
+    });
+
+    if (foundCount === 0) {
+      showPopup("No files found matching your search criteria.", true);
+    } else {
+      const criteria = [];
+      if (batchNumber) criteria.push(`batch "${batchNumber}"`);
+      if (year) criteria.push(`year "${year}"`);
+      showPopup(`🔍 Found ${foundCount} file(s) matching ${criteria.join(" and ")}`);
+    }
+  });
+}
+
+// Reset Search Button
+const resetSearchBtn = document.getElementById("resetSearchBtn");
+if (resetSearchBtn) {
+  resetSearchBtn.addEventListener("click", () => {
+    // Clear search inputs
+    document.getElementById("searchBatchNumber").value = "";
+    document.getElementById("searchYear").value = "";
+    
+    // Show all rows
+    const rows = document.querySelectorAll("#fileTableBody tr");
+    rows.forEach(row => {
+      row.style.display = "";
+    });
+    
+    showPopup("🔄 Search filters cleared. Showing all files.");
   });
 }
