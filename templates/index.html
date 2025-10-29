@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MarkLogic</title>
+    <!-- Use url_for to generate the correct path to your favicon and stylesheet -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    
+    <!-- I am keeping your styles commented out as you requested -->
+    <!-- <style> ... </style> -->
+</head>
+<body>
+    <!-- Video Background -->
+    <div class="video-background">
+        <video autoplay muted loop playsinline>
+            <!-- Update the video source path using url_for -->
+            <source src="{{ url_for('static', filename='background/background.mp4') }}" type="video/mp4">
+        </video>
+    </div>
+
+    <div class="container">
+        <section class="hero">
+            <div class="logo-container">
+                <div class="logo-image">
+                    <!-- Update the image source path using url_for -->
+                    <img src="{{ url_for('static', filename='icons/logo.png') }}" alt="MarkLogic Logo">
+                </div>
+            </div>
+
+            <h1 class="brand-name">MarkLogic</h1>
+            <p class="slogan">Stop Searching. Start Finding</p>
+            
+            <!-- 
+              IMPORTANT: Update the link to use the Flask route.
+              url_for('signin_page') calls the signin_page() function in app.py
+            -->
+            <a href="{{ url_for('signin') }}" class="btn-signin">Sign In</a>
+        </section>
+    </div>
+</body>
+</html>

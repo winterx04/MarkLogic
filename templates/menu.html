@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Menu</title>
+    <!-- Use url_for for static assets -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- <style> ... </style> -->
+</head>
+<body>
+    <!-- Video Background -->
+    <div class="video-background">
+        <video autoplay muted loop playsinline>
+            <!-- Update video path -->
+            <source src="{{ url_for('static', filename='background/menu-background-3.mp4') }}" type="video/mp4">
+        </video>
+    </div>
+
+    <!-- Header Logo -->
+    <div class="header-logo">
+        <div class="header-logo-image">
+            <!-- Update image path -->
+            <img src="{{ url_for('static', filename='icons/logo.png') }}" alt="MarkLogic Logo">
+        </div>
+        <div class="header-brand">
+            <div class="header-brand-name">MarkLogic</div>
+            <div class="header-slogan">Stop Searching. Start Finding</div>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="container">
+        <div class="menu-container">
+
+            <!-- Menu Card 1: Link updated to use url_for('compare') -->
+            <a href="{{ url_for('compare') }}" class="menu-card">
+                <div class="menu-icon">
+                    <img src="{{ url_for('static', filename='icons/compare.png') }}" alt="Compare Icon">
+                </div>
+                <div class="menu-content">
+                    <h3 class="menu-title">Compare</h3>
+                    <p class="menu-description">
+                        Compare trademarks instantly to detect similarities and conflicts using our advanced search algorithms.
+                    </p>
+                </div>
+                <div class="menu-arrow">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                </div>
+            </a>
+
+            <!-- Menu Card 2: Link updated to use url_for('search') -->
+            <a href="{{ url_for('search') }}" class="menu-card">
+                <div class="menu-icon">
+                    <img src="{{ url_for('static', filename='icons/search.png') }}" alt="Search Icon">
+                </div>
+                <div class="menu-content">
+                    <h3 class="menu-title">Search</h3>
+                    <p class="menu-description">
+                        Quickly search trademarks by name, keywords, or logo features with our intuitive search interface.
+                    </p>
+                </div>
+                <div class="menu-arrow">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                </div>
+            </a>
+
+            <!-- Menu Card 3: href="#" is fine since it's controlled by JS -->
+            <a href="#" class="menu-card" id="datasetMenuCard">
+                <div class="menu-icon">
+                    <img src="{{ url_for('static', filename='icons/dataset.png') }}" alt="Dataset Icon">
+                </div>
+                <div class="menu-content">
+                    <h3 class="menu-title">Dataset</h3>
+                    <p class="menu-description">
+                        Upload new trademark journals to keep the system updated with the latest information.
+                    </p>
+                </div>
+                <div class="menu-arrow">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <!-- Dataset Modal -->
+    <div class="dataset-modal-overlay" id="datasetModal">
+        <div class="dataset-modal-box">
+            <h2 class="dataset-modal-title">Choose Dataset</h2>
+            <p class="dataset-modal-subtitle">Select which dataset you would like to access</p>
+            <div class="dataset-modal-buttons">
+                <!-- Modal links updated to use url_for() and pass query parameters -->
+                <a href="{{ url_for('client_dataset', type='client') }}" class="dataset-modal-btn">Client Dataset</a>
+                <a href="{{ url_for('dataset', type='myipo') }}" class="dataset-modal-btn">MYIPO Dataset</a>
+                <button class="dataset-modal-btn dataset-modal-cancel" id="modalCancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Your inline JavaScript remains unchanged -->
+    <script>
+        const datasetMenuCard = document.getElementById('datasetMenuCard');
+        const datasetModal = document.getElementById('datasetModal');
+        const modalCancel = document.getElementById('modalCancel');
+
+        datasetMenuCard.addEventListener('click', (e) => {
+            e.preventDefault();
+            datasetModal.classList.add('show');
+        });
+
+        modalCancel.addEventListener('click', () => {
+            datasetModal.classList.remove('show');
+        });
+
+        datasetModal.addEventListener('click', (e) => {
+            if (e.target === datasetModal) {
+                datasetModal.classList.remove('show');
+            }
+        });
+    </script>
+</body>
+</html>

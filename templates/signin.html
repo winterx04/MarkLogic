@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <!-- Video Background -->
+    <div class="video-background">
+        <video autoplay muted loop playsinline>
+            <source src="{{ url_for('static', filename='background/background.mp4') }}" type="video/mp4">
+        </video>
+    </div>
+
+    <!-- Header Logo -->
+    <a href="{{ url_for('index') }}" class="header-logo-link" style="text-decoration: none; color: inherit;">
+        <div class="header-logo">
+            <div class="header-logo-image">
+                <img src="{{ url_for('static', filename='icons/logo.png') }}" alt="MarkLogic Logo">
+            </div>
+            <div class="header-brand">
+                <div class="header-brand-name">MarkLogic</div>
+                <div class="header-slogan">Stop Searching. Start Finding</div>
+            </div>
+        </div>
+    </a>
+
+    <div class="container">
+        <div class="signin-container">
+            <div class="signin-box">
+                <h2 class="signin-title">Welcome Back</h2>
+                
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="flash-message {{ category }}">{{ message }}</div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                
+                <!-- This is your form, correctly structured to use the new CSS -->
+                <form id="signinForm" action="{{ url_for('signin') }}" method="POST" novalidate>
+                    <div class="form-group">
+                        <label class="form-label" for="email">Email</label>
+                        <input 
+                            type="email" 
+                            id="email"
+                            name="email"  
+                            class="form-input" 
+                            placeholder="Enter your email"
+                            required
+                        >
+                        <small class="error-message" id="emailError"></small>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="password">Password</label>
+                        <input 
+                            type="password" 
+                            id="password"
+                            name="password"   
+                            class="form-input" 
+                            placeholder="Enter your password"
+                            required
+                        >
+                        <small class="error-message" id="passwordError"></small>
+                    </div>
+
+                    <div class="forgot-password">
+                        <a href="#forgot">Forgot password?</a>
+                    </div>
+
+                    <button type="submit" class="btn-signin">Sign In</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='sign-in.js') }}"></script>
+</body>
+</html>
