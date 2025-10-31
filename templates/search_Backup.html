@@ -4,19 +4,18 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Search</title>
-  <!-- Use url_for for static assets -->
-  <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/favicon.png') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="icon" type="image/png" href="icons/favicon.png">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <!-- Static Background -->
   <div class="image-background"></div>
 
-  <!-- Header Logo: Update link to use url_for -->
-  <a href="{{ url_for('menu') }}" style="text-decoration: none; color: inherit;">
+  <!-- Header Logo -->
+  <a href="menu.html" style="text-decoration: none; color: inherit;">
     <div class="header-logo">
       <div class="header-logo-image">
-        <img src="{{ url_for('static', filename='icons/logo.png') }}" alt="MarkLogic Logo">
+        <img src="icons/logo.png" alt="MarkLogic Logo" onerror="this.style.display='none'; this.parentElement.innerHTML='📊'">
       </div>
       <div class="header-brand">
         <div class="header-brand-name">MarkLogic</div>
@@ -75,41 +74,62 @@
             <tr>
               <th class="trademark-cell">Trademark</th>
               <th>Class</th>
-              <th class="id-cell">Serial Number</th> <!-- Changed from ID -->
+              <th class="id-cell">ID</th>
               <th>Applicant</th>
-              <th>Description</th> <!-- Changed from Agent -->
+              <th>Agent</th>
             </tr>
           </thead>
           <tbody id="resultsBody">
-            <!-- DYNAMIC CONTENT: Loop through trademarks from the database -->
-            {% for trademark in trademarks %}
             <tr>
               <td class="trademark-cell">
-                <!-- Check if a logo exists for this trademark -->
-                {% if trademark.has_logo %}
                 <div class="trademark-image">
-                    <!-- Dynamically generate the URL for the logo -->
-                    <img src="{{ url_for('get_trademark_logo', trademark_id=trademark.id) }}" alt="Trademark Logo">
+                    <img src="trademarks/trademark-1.png" alt="Trademark">
                 </div>
-                {% else %}
-                <div class="trademark-image no-logo">
-                    <span>No Logo</span>
-                </div>
-                {% endif %}
               </td>
-              <td>{{ trademark.class_indices or 'N/A' }}</td>
-              <td class="id-cell">{{ trademark.serial_number or 'N/A' }}</td>
-              <td>{{ trademark.applicant_name or 'N/A' }}</td>
-              <td>{{ trademark.description or 'N/A' }}</td>
+              <td>3</td>
+              <td class="id-cell">TM2019001761</td>
+              <td>LG HOUSEHOLD & HEALTH CARE LTD. </td>
+              <td>Jyeshta Mahendran, Shearn Delamore & Co. 7th Floor, Wisma Hamzah-Kwong Hing No. 1, Leboh Ampang, 50100 Kuala Lumpur </td>
             </tr>
-            {% endfor %}
-            <!-- End of dynamic content -->
+            <tr>
+              <td class="trademark-cell">
+                <div class="trademark-image">
+                    <img src="trademarks/trademark-2.png" alt="Trademark">
+                </div>
+              </td>
+              <td>4</td>
+              <td class="id-cell">2017065019</td>
+              <td>GAJAS PUTIH SDN. BHD.</td>
+              <td>Mohana Murali A/L Kodivel, Adastra Intellectual Property Sdn Bhd, A-39-10, Penthouse, Menara UOA Bangsar, No. 5, Jalan Bangsar Utama 1, Bangsar 59000 Kuala Lumpur </td>
+            </tr>
+            <tr>
+              <td class="trademark-cell">
+                <div class="trademark-image">
+                    <img src="trademarks/trademark-3.png" alt="Trademark">
+                </div>
+              </td>
+              <td>9</td>
+              <td class="id-cell">2015010064</td>
+              <td>SOLID CONTROL HOLDING B.V</td>
+              <td>Soh Kar Liang, Ella Cheong IP Services Sdn Bhd A-31-3, Level 31, Menara UOA Bangsar No 5, Jalan Bangsar Utama 1, 59000 Kuala Lumpur</td>
+            </tr>
+            <tr>
+              <td class="trademark-cell">
+                <div class="trademark-image">
+                    <img src="trademarks/trademark-5.png" alt="Trademark">
+                </div>
+              </td>
+              <td>9</td>
+              <td class="id-cell">TM2019040953</td>
+              <td>ASHUKA TECHNOLOGIES SDN. BHD.</td>
+              <td>Yip Jiun Hann, TRADEMARK2U Sdn Bhd No. 1, Block C, Jalan Dataran SD 1, Dataran SD PJU 9, Bandar Sri Damansara, 52200 Kuala Lumpur</td>
+            </tr>
           </tbody>
         </table>
       </div>
     </div>
   </div>
 
-<script src="{{ url_for('static', filename='search.js') }}"></script>
+<script src="search.js"></script>
 </body>
 </html>
