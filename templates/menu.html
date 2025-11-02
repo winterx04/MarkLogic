@@ -87,6 +87,25 @@
                     </svg>
                 </div>
             </a>
+
+            <!-- --- NEW CONDITIONAL BLOCK for Admin Card --- -->
+            {% if session.role and session.role.lower() == 'admin' %}
+                <!-- Menu Card 4 (Only shown to admins) -->
+                <a href="{{ url_for('admin_page') }}" class="menu-card" style="max-width:270px;">
+                    <div class="menu-icon">
+                        <img src="{{ url_for('static', filename='icons/admin.png') }}" alt="Admin Icon">
+                    </div>
+                    <div class="menu-content">
+                        <h3 class="menu-title">Administrator</h3>
+                        <p class="menu-description">
+                            Maintain control and ensure seamless management across all user operations.
+                        </p>
+                    </div>
+                    <div class="menu-arrow">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    </div>
+                </a>
+            {% endif %}
         </div>
     </div>
 

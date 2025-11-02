@@ -226,3 +226,48 @@ def search_trademarks(words=None, class_filter=None):
     cur.close()
     conn.close()
     return trademarks
+
+
+
+# ==============================================================================
+# ADMIN MANAGE USER FUNCTIONS 
+# ==============================================================================
+def get_all_users():
+    """Fetches all users from the database."""
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cur.execute("SELECT id, username, email, role FROM users ORDER BY id ASC")
+    users = cur.fetchall()
+    cur.close()
+    conn.close()
+    return users
+
+def delete_user_by_id(user_id):
+    """Deletes a user from the database by their ID."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"Database error deleting user: {e}")
+        raise e
+    finally:
+        cur.close()
+        conn.close()
+
+def update_user_role(user_id, new_role):
+    """Updates the role for a specific user."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE users SET role = %s WHERE id = %s", (new_role, user_id))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"Database error updating role: {e}")
+        raise e
+    finally:
+        cur.close()
+        conn.close()
