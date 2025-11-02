@@ -193,28 +193,28 @@ def search_trademarks(words=None, class_filter=None):
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     
-    # Start with the base query
     query = """
         SELECT id, serial_number, class_indices, registration_date, applicant_name, description,
                (logo_data IS NOT NULL) as has_logo
         FROM trademarks
     """
     
-    # List to hold WHERE conditions and parameters to prevent SQL injection
     where_clauses = []
     params = []
     
     if words:
-        # Case-insensitive search in description or applicant name
         where_clauses.append("(description ILIKE %s OR applicant_name ILIKE %s)")
         params.extend([f'%{words}%', f'%{words}%'])
         
+    # --- THIS IS THE BLOCK TO CHANGE ---
     if class_filter:
-        # Case-insensitive search for the class index
-        where_clauses.append("class_indices ILIKE %s")
-        params.append(f'%{class_filter}%')
+        # The '\y' is a word boundary in PostgreSQL's regex.
+        # This ensures that searching for '9' matches '9' or '3, 9' but NOT '19' or '29'.
+        where_clauses.append("class_indices ~ %s")
+        # We build the regex pattern here. The \\y is needed to escape the backslash in the f-string.
+        params.append(f'\\y{class_filter}\\y')
+    # --- END OF CHANGED BLOCK ---
         
-    # If there are any filters, add the WHERE clause to the query
     if where_clauses:
         query += " WHERE " + " AND ".join(where_clauses)
         
