@@ -187,13 +187,23 @@ def client_dataset():
     return render_template('client-dataset.html')
 
 
+
 # --- UPDATED: Admin Page Route (loads initial data) ---
+# --- UPDATED: The /admin route now renders the new menu page ---
 @app.route('/admin')
 @admin_required
 def admin_page():
-    """Renders the admin page and populates it with all users."""
+    """Renders the admin dashboard/menu page."""
+    return render_template('admin.html') # Renders the new menu
+
+# --- NEW: The /user-management route renders the user table page ---
+@app.route('/user-management')
+@admin_required
+def user_management():
+    """Renders the user management page with the table of users."""
     all_users = db.get_all_users()
-    return render_template('admin.html', users=all_users)
+    # Renders the file you renamed to user_management.html
+    return render_template('user_management.html', users=all_users)
 
 # --- NEW: API Route to ADD a new user ---
 @app.route('/api/users/add', methods=['POST'])
@@ -223,7 +233,7 @@ def api_add_user():
 # --- NEW: API Route to DELETE a user ---
 @app.route('/api/users/delete/<int:user_id>', methods=['DELETE'])
 @admin_required
-def api_delete_user():
+def api_delete_user(user_id):
     # Prevent admin from deleting themselves
     if 'user_id' in session and session['user_id'] == user_id:
         return jsonify({'success': False, 'message': 'You cannot delete your own account.'}), 403

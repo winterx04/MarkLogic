@@ -1,113 +1,192 @@
-// --- Rerender Table from Server Data ---
-const fetchAndRenderUsers = async () => {
-    const response = await fetch('/admin'); // Re-fetch the admin page content
-    const html = await response.text();
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    const newTbody = doc.querySelector('#usersTableBody');
-    $q('#usersTableBody').innerHTML = newTbody.innerHTML;
-    bindEventListeners(); // Re-attach listeners to new elements
-};
+// =========================================================================
+// admin.js - COMPLETE SCRIPT FOR USER MANAGEMENT PAGE
+// This file ONLY manages the user table, add user modal, and related actions.
+// The shared user icon/logout logic is in 'logout.js'.
+// =========================================================================
+document.addEventListener('DOMContentLoaded', () => {
 
-// --- Event Handlers ---
-const handleAddUser = (event) => {
-    event.preventDefault();
-    const name = $q('#newUserName').value.trim();
-    const email = $q('#newUserEmail').value.trim();
-    const password = $q('#newUserPassword').value.trim();
-    const role = $q('#modalRoleDropdown .admin-role-option.selected')?.dataset.value || 'User';
+    // --- Get all necessary static DOM elements ---
+    const usersTableBody = document.getElementById('usersTableBody');
+    const openAddUserBtn = document.getElementById('openAddUserBtn');
+    const addUserModal = document.getElementById('addUserModal');
+    const cancelAddUserBtn = document.getElementById('cancelAddUserBtn');
+    const addUserForm = document.getElementById('addUserForm');
+    
+    // Check if we are on the correct page before running any code
+    if (!usersTableBody) {
+        // If there's no user table, don't run any of this page-specific code.
+        return; 
+    }
 
-    fetch('/api/users/add', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password, role })
-    })
-    .then(res => res.json())
-    .then(data => {
-        showPopup(data.message, data.success ? 'success' : 'error');
-        if (data.success) {
-            closeAddUserModal();
-            fetchAndRenderUsers();
+    // =====================================================================
+    // UI HELPER FUNCTIONS (These must be defined first)
+    // =====================================================================
+    let popupTimeout = null;
+    function showPopup(message, type = 'success') {
+        const popup = document.getElementById('popup');
+        if (!popup) return;
+        clearTimeout(popupTimeout);
+        popup.textContent = message;
+        popup.className = `admin-popup-notification ${type} show`;
+        popupTimeout = setTimeout(() => {
+            popup.classList.remove('show');
+        }, 3000);
+    }
+
+    const confirmModal = document.getElementById('confirmModal');
+    function showConfirmModal(message, onConfirm) {
+        if (!confirmModal) return;
+        const confirmMessageEl = document.getElementById('confirmMessage');
+        const confirmActionBtn = document.getElementById('confirmActionBtn');
+        const confirmCancelBtn = document.getElementById('confirmCancelBtn');
+
+        confirmMessageEl.textContent = message;
+        confirmModal.style.display = 'flex';
+
+        // Re-clone the button to remove old event listeners, which is a robust way to handle this
+        const newConfirmBtn = confirmActionBtn.cloneNode(true);
+        confirmActionBtn.parentNode.replaceChild(newConfirmBtn, confirmActionBtn);
+        
+        newConfirmBtn.addEventListener('click', () => {
+            confirmModal.style.display = 'none';
+            if (onConfirm) onConfirm();
+        });
+
+        confirmCancelBtn.addEventListener('click', () => {
+            confirmModal.style.display = 'none';
+        }, { once: true });
+    }
+
+    const openAddUserModal = () => {
+        if (addUserModal) {
+            addUserModal.classList.add('show');
+            // Safely set default role in modal
+            const userOption = addUserModal.querySelector('.admin-role-option[data-value="User"]');
+            if (userOption) selectRoleInModal(userOption);
         }
-    });
-};
+    };
+    const closeAddUserModal = () => {
+        if (addUserModal) {
+            addUserModal.classList.remove('show');
+            addUserForm.reset();
+        }
+    };
 
-const handleDeleteUser = (event) => {
-    const row = event.target.closest('tr');
-    const userId = row.dataset.userId;
-    showConfirmModal('Are you sure you want to delete this user?', () => {
-        fetch(`/api/users/delete/${userId}`, { method: 'DELETE' })
+    const toggleRoleDropdown = (element) => {
+        const dropdown = element.closest('.admin-role-dropdown');
+        if (!dropdown) return;
+        // Close all other dropdowns first
+        document.querySelectorAll('.admin-role-dropdown.show').forEach(d => {
+            if (d !== dropdown) d.classList.remove('show');
+        });
+        dropdown.classList.toggle('show');
+    };
+
+    const selectRoleInModal = (option) => {
+        const dropdown = option.closest('.admin-role-dropdown');
+        if (!dropdown) return;
+        dropdown.querySelectorAll('.admin-role-option').forEach(opt => opt.classList.remove('selected'));
+        option.classList.add('selected');
+        dropdown.querySelector('.admin-role-select span').textContent = option.dataset.value;
+    };
+
+    // =====================================================================
+    // ACTION HANDLERS (These make the API calls to Flask)
+    // =====================================================================
+
+    const handleDeleteUser = (button) => {
+        const row = button.closest('tr');
+        const userId = row.dataset.userId;
+        showConfirmModal('Are you sure you want to delete this user?', () => {
+            fetch(`/api/users/delete/${userId}`, { method: 'DELETE' })
+            .then(res => res.json())
+            .then(data => {
+                showPopup(data.message, data.success ? 'success' : 'error');
+                if (data.success) row.remove();
+            });
+        });
+    };
+    
+    const handleRoleChange = (option) => {
+        const dropdown = option.closest('.admin-role-dropdown');
+        const userId = dropdown.dataset.userId;
+        const newRole = option.dataset.value;
+        fetch('/api/users/update_role', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: userId, role: newRole })
+        })
         .then(res => res.json())
         .then(data => {
             showPopup(data.message, data.success ? 'success' : 'error');
             if (data.success) {
-                row.remove();
+                dropdown.querySelector('.admin-role-select span').textContent = newRole;
+                dropdown.querySelectorAll('.admin-role-option').forEach(opt => {
+                    opt.classList.toggle('selected', opt.dataset.value === newRole);
+                });
             }
         });
-    });
-};
+    };
 
-const handleRoleChange = (event) => {
-    const option = event.target.closest('.admin-role-option');
-    const dropdown = event.target.closest('.admin-role-dropdown');
-    if (!option || !dropdown) return;
+    const handleAddUser = (event) => {
+        event.preventDefault();
+        const name = document.getElementById('newUserName').value.trim();
+        const email = document.getElementById('newUserEmail').value.trim();
+        const password = document.getElementById('newUserPassword').value.trim();
+        const role = document.querySelector('#modalRoleDropdown .admin-role-option.selected')?.dataset.value || 'User';
+        fetch('/api/users/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, password, role })
+        })
+        .then(res => res.json())
+        .then(data => {
+            showPopup(data.message, data.success ? 'success' : 'error');
+            if (data.success) {
+                closeAddUserModal();
+                window.location.reload();
+            }
+        });
+    };
 
-    const userId = dropdown.dataset.userId;
-    const newRole = option.dataset.value;
-    
-    fetch('/api/users/update_role', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, role: newRole })
-    })
-    .then(res => res.json())
-    .then(data => {
-        showPopup(data.message, data.success ? 'success' : 'error');
-        if(data.success) {
-             dropdown.querySelector('.admin-role-select span').textContent = newRole;
+    // =====================================================================
+    // BINDING ALL EVENT LISTENERS
+    // =====================================================================
+
+    // --- Main table actions (using event delegation) ---
+    usersTableBody.addEventListener('click', (event) => {
+        const target = event.target;
+        const deleteButton = target.closest('.admin-delete-btn');
+        if (deleteButton) {
+            handleDeleteUser(deleteButton);
+            return;
+        }
+        const roleOption = target.closest('.admin-role-option');
+        if (roleOption) {
+            handleRoleChange(roleOption);
+        }
+        const roleSelect = target.closest('.admin-role-select');
+        if (roleSelect) {
+            toggleRoleDropdown(roleSelect);
         }
     });
-};
 
-// --- Main Function to Bind All Listeners ---
-const bindEventListeners = () => {
-    // Add User Modal Logic
-    $q('#openAddUserBtn')?.addEventListener('click', openAddUserModal);
-    $q('#cancelAddUserBtn')?.addEventListener('click', closeAddUserModal);
-    $q('#addUserForm')?.addEventListener('submit', handleAddUser);
-
-    // Logout
-    $q('#logoutItem')?.addEventListener('click', () => {
-        showConfirmModal('Are you sure you want to log out?', () => {
-            window.location.href = '/logout';
-        });
+    // --- Add User Modal (static elements) ---
+    openAddUserBtn.addEventListener('click', openAddUserModal);
+    cancelAddUserBtn.addEventListener('click', closeAddUserModal);
+    addUserForm.addEventListener('submit', handleAddUser);
+    addUserModal.addEventListener('click', (e) => {
+        if(e.target === addUserModal) closeAddUserModal(); // Close if clicking on overlay
+        const roleSelect = e.target.closest('.admin-role-select');
+        if (roleSelect) toggleRoleDropdown(roleSelect);
+        const roleOption = e.target.closest('.admin-role-option');
+        if (roleOption) selectRoleInModal(roleOption);
     });
 
-    // Table Actions (Delete and Role Change)
-    document.querySelectorAll('.admin-delete-btn').forEach(btn => btn.addEventListener('click', handleDeleteUser));
-    document.querySelectorAll('.admin-role-option').forEach(opt => opt.addEventListener('click', handleRoleChange));
-    // Add other listeners from your original script (dropdown toggles, etc.)
-};
-
-// --- Initial Setup ---
-bindEventListeners();
-// Copy all other UI functions from your original script here (open/close modals, toggles, etc.)
-   
-const datasetMenuCard = document.getElementById('datasetMenuCard');
-const datasetModal = document.getElementById('datasetModal');
-const modalCancel = document.getElementById('modalCancel');
-
-datasetMenuCard.addEventListener('click', (e) => {
-    e.preventDefault();
-    datasetModal.classList.add('show');
-});
-
-modalCancel.addEventListener('click', () => {
-    datasetModal.classList.remove('show');
-});
-
-datasetModal.addEventListener('click', (e) => {
-    if (e.target === datasetModal) {
-        datasetModal.classList.remove('show');
-    }
+    // --- Global listener to close dropdowns ---
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.admin-role-dropdown')) {
+            document.querySelectorAll('.admin-role-dropdown.show').forEach(d => d.classList.remove('show'));
+        }
+    });
 });

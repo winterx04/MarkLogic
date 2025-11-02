@@ -187,9 +187,51 @@ def get_all_embeddings():
 # SEARCH FUNCTIONS 
 # ==============================================================================
 
-def search_trademarks(words=None, class_filter=None):
+# def search_trademarks(words=None, class_filter=None):
+#     """
+#     Fetches trademarks from the database, filtering by words and/or class.
+#     """
+#     conn = get_db_connection()
+#     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    
+#     query = """
+#         SELECT id, serial_number, class_indices, registration_date, applicant_name, description,
+#                (logo_data IS NOT NULL) as has_logo
+#         FROM trademarks
+#     """
+    
+#     where_clauses = []
+#     params = []
+    
+#     if words:
+#         where_clauses.append("(description ILIKE %s OR applicant_name ILIKE %s)")
+#         params.extend([f'%{words}%', f'%{words}%'])
+        
+#     # --- THIS IS THE BLOCK TO CHANGE ---
+#     if class_filter:
+#         # The '\y' is a word boundary in PostgreSQL's regex.
+#         # This ensures that searching for '9' matches '9' or '3, 9' but NOT '19' or '29'.
+#         where_clauses.append("class_indices ~ %s")
+#         # We build the regex pattern here. The \\y is needed to escape the backslash in the f-string.
+#         params.append(f'\\y{class_filter}\\y')
+#     # --- END OF CHANGED BLOCK ---
+        
+#     if where_clauses:
+#         query += " WHERE " + " AND ".join(where_clauses)
+        
+#     query += " ORDER BY id DESC"
+    
+#     cur.execute(query, tuple(params))
+#     trademarks = cur.fetchall()
+#     cur.close()
+#     conn.close()
+#     return trademarks
+
+# In database.py
+
+def search_trademarks(words=None, class_filter=None, id_list=None):
     """
-    Fetches trademarks from the database, filtering by words and/or class.
+    Fetches trademarks, filtering by text, class, AND an optional list of IDs from image search.
     """
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -207,14 +249,18 @@ def search_trademarks(words=None, class_filter=None):
         where_clauses.append("(description ILIKE %s OR applicant_name ILIKE %s)")
         params.extend([f'%{words}%', f'%{words}%'])
         
-    # --- THIS IS THE BLOCK TO CHANGE ---
     if class_filter:
-        # The '\y' is a word boundary in PostgreSQL's regex.
-        # This ensures that searching for '9' matches '9' or '3, 9' but NOT '19' or '29'.
         where_clauses.append("class_indices ~ %s")
-        # We build the regex pattern here. The \\y is needed to escape the backslash in the f-string.
         params.append(f'\\y{class_filter}\\y')
-    # --- END OF CHANGED BLOCK ---
+        
+    # --- THIS IS THE KEY ADDITION ---
+    # Filter by the list of IDs from the FAISS image search
+    if id_list is not None:
+        # If the image search returns no IDs, we must return no results.
+        if not id_list:
+            id_list = [-1] # Use a dummy ID that will never match
+        where_clauses.append("id = ANY(%s)")
+        params.append(id_list)
         
     if where_clauses:
         query += " WHERE " + " AND ".join(where_clauses)
@@ -226,8 +272,6 @@ def search_trademarks(words=None, class_filter=None):
     cur.close()
     conn.close()
     return trademarks
-
-
 
 # ==============================================================================
 # ADMIN MANAGE USER FUNCTIONS 

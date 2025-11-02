@@ -941,6 +941,7 @@ input[type="date"]:hover {
     transform: translateX(0);
 }
 
+
 /* Dataset Modal Popup */
 .dataset-modal-overlay {
     position: fixed;
@@ -4220,3 +4221,36 @@ input[type="date"]:hover {
         font-size: 14px;
       }
     }
+
+
+
+/* ======================================================= */
+/* STYLES FOR SINGLE-ROW ADMIN MENU (NO SCROLL)            */
+/* ======================================================= */
+
+.admin-single-row-menu {
+    display: flex;
+    flex-wrap: nowrap; /* This is key: prevents wrapping to a new line */
+    justify-content: center; /* Center the cards horizontally */
+    align-items: center; /* Vertically align them */
+    gap: 24px;
+    width: 100%;
+    padding: 0 40px; /* Give some space on the sides */
+}
+
+/* Make the cards inside this container flexible */
+.admin-single-row-menu .menu-card {
+    flex: 1; /* This allows cards to grow and SHRINK */
+    min-width: 250px; /* Prevents cards from becoming unreadably small */
+    max-width: 320px; /* Prevents cards from becoming too large on wide screens */
+    height: 420px; /* Maintain a consistent height */
+    max-width: none; /* Override any inline styles */
+}
+
+/* --- Responsive Fallback --- */
+/* On smaller screens (like tablets), re-enable wrapping so it doesn't look squished */
+@media (max-width: 1200px) {
+    .admin-single-row-menu {
+        flex-wrap: wrap;
+    }
+}
