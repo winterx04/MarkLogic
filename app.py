@@ -2,10 +2,15 @@ from flask import Flask, jsonify, render_template, request, redirect, url_for, f
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 import database as db # Import your database functions
+from ml_utils import MLModel
 import io
 
 app = Flask(__name__)
 app.secret_key = 'a_secure_random_secret_key'
+
+# --- INITIALIZE THE MODEL (add this right after app config) ---
+ml_model = MLModel()
+ml_model.build_logo_index() 
 
 # --- Page Rendering Routes ---
 
@@ -111,35 +116,107 @@ def register():
 
 # In app.py, replace the old '/api/search' route with this new one.
 
-@app.route('/api/combined_search', methods=['POST'])
-def api_combined_search():
-    """
-    Handles a combined search request containing text fields and optionally an image file.
-    """
-    # Get text data from the form part of the request
-    words = request.form.get('words')
-    class_filter = request.form.get('class_filter')
-    
-    # Get image data from the file part of the request
-    image_file = request.files.get('image')
+# @app.route('/api/combined_search', methods=['POST'])
+# def api_combined_search():
+#     words = request.form.get('words')
+#     class_filter = request.form.get('class_filter')
+#     image_file = request.files.get('image')
 
-    # --- Placeholder for Image Search Logic ---
-    if image_file:
-        # In a real application, you would do the following:
-        # 1. Read the image_file.read() bytes
-        # 2. Pre-process the image (resize, normalize)
-        # 3. Generate an embedding vector using your ML model
-        # 4. Use the vector to perform a similarity search with FAISS
-        # 5. Get a list of IDs from the similarity search to filter the text search results.
-        print(f"Received image: {image_file.filename}") # For now, just print that we got it
+#     image_search_ids = None # By default, don't filter by image
 
-    # Perform the text-based search using your existing database function
-    # In the future, you would combine the results from the image search here.
-    results = db.search_trademarks(words=words, class_filter=class_filter)
+#     if image_file:
+#         print(f"Performing image search for: {image_file.filename}")
+#         # 1. Generate embedding for the uploaded image
+#         query_embedding = ml_model.generate_image_embedding(image_file.stream)
+        
+#         if query_embedding is not None:
+#             # 2. Use FAISS to find similar image IDs
+#             image_search_ids = ml_model.search_faiss_index(query_embedding)
+#             print(f"FAISS found {len(image_search_ids)} similar image candidates.")
+            
+#             # If FAISS finds nothing, we must ensure the final query returns no results.
+#             if not image_search_ids:
+#                 return jsonify([]) # Return an empty list immediately
+#         else:
+#             # If the image couldn't be processed, return an error or empty result
+#             return jsonify([])
+
+#     # 3. Pass the list of IDs (or None) to our database function
+#     results = db.search_trademarks(
+#         words=words,
+#         class_filter=class_filter,
+#         id_list=image_search_ids 
+#     )
     
-    # Convert results to a JSON-friendly format and return
+#     results_list = [dict(row) for row in results]
+#     return jsonify(results_list)
+
+
+# ===============================================================================================
+# FOR TEXT SEARCH
+
+@app.route('/api/text_search', methods=['POST'])
+def api_text_search():
+    """
+    Handles searches based only on words and class filters.
+    """
+    # Get search terms from the JSON body of the request
+    data = request.get_json()
+    words = data.get('words')
+    class_filter = data.get('class_filter')
+
+    # Use the existing database function without an id_list
+    results = db.search_trademarks(
+        words=words,
+        class_filter=class_filter
+    )
+    
     results_list = [dict(row) for row in results]
     return jsonify(results_list)
+
+# ===============================================================================================
+# FOR VISUAL SEARCH REGISTRATION
+
+@app.route('/api/image_search', methods=['POST'])
+def api_image_search():
+    # --- 1. Get Inputs ---
+    # We still get text fields in case the user filled them out, to use as filters
+    words = request.form.get('words')
+    class_filter = request.form.get('class_filter')
+    image_file = request.files.get('image')
+
+    # Image is mandatory for this endpoint
+    if not image_file:
+        return jsonify({'error': 'No image file provided for the search.'}), 400
+
+    # --- 2. Perform Image Similarity Search ---
+    print(f"Performing image search for: {image_file.filename}")
+    query_embedding = ml_model.generate_image_embedding(image_file.stream)
+    
+    if query_embedding is None:
+        return jsonify([]) # Image could not be processed
+
+    # Use FAISS to find the IDs of the most visually similar logos
+    similar_ids = ml_model.search_logo_index(query_embedding)
+
+    if not similar_ids:
+        return jsonify([]) # No similar images found
+
+    # --- 3. Fetch Full Data from Database, Applying Text Filters ---
+    # We use the text/class fields as post-filters on the image search results
+    results = db.search_trademarks(
+        words=words,
+        class_filter=class_filter,
+        id_list=similar_ids # This is the crucial filter
+    )
+    
+    # --- 4. Sort and Return Results ---
+    # Preserve the similarity ranking from FAISS
+    results_dict = {row['id']: dict(row) for row in results}
+    sorted_results = [results_dict[res_id] for res_id in similar_ids if res_id in results_dict]
+
+    return jsonify(sorted_results)
+
 
 # --- Route to serve trademark logos ---
 @app.route('/logo/<int:trademark_id>')

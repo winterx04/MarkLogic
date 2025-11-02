@@ -153,6 +153,38 @@ def get_logo(trademark_id):
     conn.close()
     return logo_data[0] if logo_data else None
 
+# BACKUP OF THE PREVIOUS get_all_embeddings FUNCTION ----------------------------------------------
+
+# def get_all_embeddings():
+#     """Fetches all embeddings and IDs to build the FAISS index."""
+#     conn = get_db_connection()
+#     cur = conn.cursor()
+#     cur.execute("SELECT id, text_embedding, logo_embedding FROM trademarks")
+#     rows = cur.fetchall()
+#     cur.close()
+#     conn.close()
+
+#     db_data = {'text': [], 'logo': [], 'ids': []}
+#     text_dim = 384
+#     logo_dim = 512
+
+#     for row in rows:
+#         db_id, text_emb_bytes, logo_emb_bytes = row
+#         db_data['ids'].append(db_id)
+        
+#         text_emb = np.frombuffer(text_emb_bytes, dtype=np.float32)
+#         db_data['text'].append(text_emb)
+        
+#         if logo_emb_bytes:
+#             logo_emb = np.frombuffer(logo_emb_bytes, dtype=np.float32)
+#             db_data['logo'].append(logo_emb)
+#         else:
+#             db_data['logo'].append(np.zeros(logo_dim, dtype=np.float32))
+            
+#     return db_data
+
+# In database.py
+
 def get_all_embeddings():
     """Fetches all embeddings and IDs to build the FAISS index."""
     conn = get_db_connection()
@@ -163,20 +195,24 @@ def get_all_embeddings():
     conn.close()
 
     db_data = {'text': [], 'logo': [], 'ids': []}
-    text_dim = 384
-    logo_dim = 512
+    logo_dim = 512 # Assuming CLIP model dimension
 
     for row in rows:
         db_id, text_emb_bytes, logo_emb_bytes = row
         db_data['ids'].append(db_id)
         
-        text_emb = np.frombuffer(text_emb_bytes, dtype=np.float32)
-        db_data['text'].append(text_emb)
+        # This part is fine
+        if text_emb_bytes:
+            text_emb = np.frombuffer(text_emb_bytes, dtype=np.float32)
+            db_data['text'].append(text_emb)
         
+        # --- THIS IS THE FIX ---
+        # Convert to NumPy array here, and handle the None case explicitly.
         if logo_emb_bytes:
             logo_emb = np.frombuffer(logo_emb_bytes, dtype=np.float32)
             db_data['logo'].append(logo_emb)
         else:
+            # If no embedding exists, append an array of zeros.
             db_data['logo'].append(np.zeros(logo_dim, dtype=np.float32))
             
     return db_data
