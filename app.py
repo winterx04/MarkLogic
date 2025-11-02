@@ -143,6 +143,10 @@ def get_trademark_logo(trademark_id):
 def menu():
     return render_template('menu.html')
 
+@app.route('/admin-menu')
+def compare():
+    return render_template('admin-menu.html')
+
 @app.route('/compare')
 def compare():
     return render_template('compare.html')

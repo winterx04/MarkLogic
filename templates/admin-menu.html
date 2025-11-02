@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Menu</title>
+    <link rel="icon" type="image/png" href="icons/favicon.png">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Video Background -->
+    <div class="video-background">
+        <video autoplay muted loop playsinline>
+            <source src="background/menu-background-3.mp4" type="video/mp4">
+        </video>
+    </div>
+
+    <!-- Header Logo -->
+        <div class="header-logo">
+            <div class="header-logo-image">
+                <img src="icons/logo.png" alt="MarkLogic Logo">
+            </div>
+            <div class="header-brand">
+                <div class="header-brand-name">MarkLogic</div>
+                <div class="header-slogan">Stop Searching. Start Finding</div>
+            </div>
+        </div>
+
+    <!-- Main Container -->
+    <div class="container">
+        <div class="menu-container">
+
+            <!-- Menu Card 1 -->
+            <a href="compare.html" class="menu-card" style="max-width:270px";>
+                <div class="menu-icon">
+                    <img src="icons/compare.png" alt="Compare Icon">
+                </div>
+                <div class="menu-content">
+                    <h3 class="menu-title">Compare</h3>
+                    <p class="menu-description">
+                        Compare trademarks instantly to detect similarities and conflicts using our advanced search algorithms.
+                    </p>
+                </div>
+                <!-- Hover Arrow -->
+                <div class="menu-arrow">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                </div>
+            </a>
+
+            <!-- Menu Card 2 -->
+            <a href="search.html" class="menu-card" style="max-width:270px";>
+                <div class="menu-icon">
+                    <img src="icons/search.png" alt="Search Icon">
+                </div>
+                <div class="menu-content">
+                    <h3 class="menu-title">Search</h3>
+                    <p class="menu-description">
+                        Quickly search trademarks by name, keywords, or logo features with our intuitive search interface.
+                    </p>
+                </div>
+                <!-- Hover Arrow -->
+                <div class="menu-arrow">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                </div>
+            </a>
+
+            <!-- Menu Card 3 -->
+            <a href="#" class="menu-card" id="datasetMenuCard" style="max-width:270px";>
+                <div class="menu-icon">
+                    <img src="icons/dataset.png" alt="Dataset Icon">
+                </div>
+                <div class="menu-content">
+                    <h3 class="menu-title">Dataset</h3>
+                    <p class="menu-description">
+                        Upload new trademark journals to keep the system updated with the latest information.
+                    </p>
+                </div>
+                <!-- Hover Arrow -->
+                <div class="menu-arrow">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                </div>
+            </a>
+
+            <!-- Menu Card 4 -->
+            <a href="admin.html" class="menu-card" id="datasetMenuCard" style="max-width:270px";>
+                <div class="menu-icon">
+                    <img src="icons/admin.png" alt="Dataset Icon">
+                </div>
+                <div class="menu-content">
+                    <h3 class="menu-title">Administrator</h3>
+                    <p class="menu-description">
+                        Maintain control and ensure seamless management across all user operations.
+                    </p>
+                </div>
+                <!-- Hover Arrow -->
+                <div class="menu-arrow">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <!-- Dataset Modal -->
+    <div class="dataset-modal-overlay" id="datasetModal">
+        <div class="dataset-modal-box">
+            <h2 class="dataset-modal-title">Choose Dataset</h2>
+            <p class="dataset-modal-subtitle">Select which dataset you would like to access</p>
+            <div class="dataset-modal-buttons">
+                <a href="client-dataset.html?type=client" class="dataset-modal-btn">Client Dataset</a>
+                <a href="dataset.html?type=myipo" class="dataset-modal-btn">MYIPO Dataset</a>
+                <button class="dataset-modal-btn dataset-modal-cancel" id="modalCancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+        <script>
+        const datasetMenuCard = document.getElementById('datasetMenuCard');
+        const datasetModal = document.getElementById('datasetModal');
+        const modalCancel = document.getElementById('modalCancel');
+
+        // Show modal when dataset card is clicked
+        datasetMenuCard.addEventListener('click', (e) => {
+            e.preventDefault();
+            datasetModal.classList.add('show');
+        });
+
+        // Close modal when cancel is clicked
+        modalCancel.addEventListener('click', () => {
+            datasetModal.classList.remove('show');
+        });
+
+        // Close modal when clicking outside
+        datasetModal.addEventListener('click', (e) => {
+            if (e.target === datasetModal) {
+                datasetModal.classList.remove('show');
+            }
+        });
+    </script>
+</body>
+</html>

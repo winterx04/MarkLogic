@@ -44,6 +44,7 @@ def init_db():
             username VARCHAR(80) UNIQUE NOT NULL,
             email VARCHAR(120) UNIQUE NOT NULL,
             password_hash TEXT NOT NULL, -- IMPORTANT: Store hashed passwords, not plaintext
+            role VARCHAR(20) NOT NULL,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
     """)
