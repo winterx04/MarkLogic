@@ -3770,7 +3770,7 @@ input[type="date"]:hover {
     .users-table th {
       padding: 20px;
       text-align: center;
-      font-size: 14px;
+      font-size: 18px;
       font-weight: 600;
       color: rgba(255, 255, 255, 0.95);
       letter-spacing: 0.3px;
@@ -3782,7 +3782,7 @@ input[type="date"]:hover {
     }
 
     .users-table tbody tr {
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      border-bottom: 3px solid rgba(255, 255, 255, 0.1);
       transition: background 0.3s ease;
       position: relative;
     }
@@ -3798,7 +3798,7 @@ input[type="date"]:hover {
     .users-table td {
       padding: 20px;
       color: rgba(255, 255, 255, 0.85);
-      font-size: 15px;
+      font-size: 16px;
       text-align: center;
       border-right: 1px solid rgba(255, 255, 255, 0.08);
       vertical-align: middle;
@@ -4219,4 +4219,46 @@ input[type="date"]:hover {
         padding: 16px 12px;
         font-size: 14px;
       }
+    }
+    
+    /* Edit button styling - match delete button */
+    .admin-edit-btn {
+      padding: 10px 30px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.85);
+      transition: all 0.3s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 auto 8px auto;
+    }
+    
+    .admin-edit-btn i {
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.85);
+      transition: all 0.3s ease;
+    }
+    
+    .admin-edit-btn:hover {
+      background: rgba(59, 130, 246, 0.2);
+      border-color: rgba(59, 130, 246, 0.5);
+      color: rgba(255, 255, 255, 0.95);
+      transform: translateY(-2px);
+    }
+    
+    .admin-edit-btn:hover i {
+      color: rgba(255, 255, 255, 0.95);
+    }
+
+    /* Stack buttons vertically */
+    .users-table td:last-child {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
     }

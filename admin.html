@@ -13,14 +13,14 @@
   <div class="image-background"></div>
 
   <!-- Header Logo -->
-  <a href="menu.html" style="text-decoration: none; color: inherit;">
-    <div class="header-logo" style="display:flex; align-items:center; gap:12px; position:fixed; left:24px; top:24px; z-index:20;">
-      <div class="header-logo-image" style="width:40px; height:40px; display:flex; align-items:center; justify-content:center;">
-        <img src="icons/logo.png" alt="MarkLogic Logo" onerror="this.style.display='none'; this.parentElement.innerHTML='📊'" style="width:100%; height:100%; object-fit:contain;">
+  <a href="admin-menu.html" class="header-logo-link" style="text-decoration: none; color: inherit;">
+    <div class="header-logo">
+      <div class="header-logo-image">
+        <img src="icons/logo.png" alt="MarkLogic Logo">
       </div>
-      <div class="header-brand" style="color:rgba(255,255,255,0.95);">
-        <div class="header-brand-name" style="font-weight:700;">MarkLogic</div>
-        <div class="header-slogan" style="font-size:12px; opacity:0.85;">Stop Searching. Start Finding</div>
+      <div class="header-brand">
+        <div class="header-brand-name">MarkLogic</div>
+        <div class="header-slogan">Stop Searching. Start Finding</div>
       </div>
     </div>
   </a>
@@ -70,7 +70,6 @@
           <tr>
             <th>Name</th>
             <th>Email</th>
-            <th>Password</th>
             <th>Role</th>
             <th>Action</th>
           </tr>
@@ -88,19 +87,15 @@
       <h2 class="admin-modal-title" id="addUserTitle">Add New User</h2>
       <form id="addUserForm">
         <div class="form-group" style="margin-bottom:12px;">
-          <label class="form-label">Name</label><br>
-          <input type="text" class="form-input" id="newUserName" placeholder="Enter name" required style="width:100%; padding:10px; border-radius:8px; border:1px solid rgba(0,0,0,0.1);">
+          <label class="form-label">Name</label>
+          <input type="text" class="form-input" id="newUserName" placeholder="Enter name" required style="width:100%; padding:10px; border-radius:8px; border:1px solid rgba(0,0,0,0.1); margin-bottom: 13px;">
         </div>
         <div class="form-group" style="margin-bottom:12px;">
-          <label class="form-label">Email</label><br>
-          <input type="email" class="form-input" id="newUserEmail" placeholder="Enter email" required style="width:100%; padding:10px; border-radius:8px; border:1px solid rgba(0,0,0,0.1);">
-        </div>
-        <div class="form-group" style="margin-bottom:12px;">
-          <label class="form-label">Password</label><br>
-          <input type="password" class="form-input" id="newUserPassword" placeholder="Enter password" required style="width:100%; padding:10px; border-radius:8px; border:1px solid rgba(0,0,0,0.1);">
+          <label class="form-label">Email</label>
+          <input type="email" class="form-input" id="newUserEmail" placeholder="Enter email" required style="width:100%; padding:10px; border-radius:8px; border:1px solid rgba(0,0,0,0.1); margin-bottom: 13px;">
         </div>
         <div class="form-group" style="margin-bottom:6px;">
-          <label class="form-label">Role</label><br>
+          <label class="form-label">Role</label>
           <div class="admin-role-dropdown" id="modalRoleDropdown" data-index="-1" aria-expanded="false">
             <div class="admin-role-select" onclick="toggleRoleDropdown(this)">
                 <span>Admin</span>
@@ -134,327 +129,6 @@
       </div>
     </div>
   </div>
-
-<script>
-  // ==========================
-  // User Data (In-Memory)
-  // ==========================
-  let users = [
-    { name: 'Victoria Foo', email: 'victoria.foo@skrine.com', password: 'password123', role: 'Admin' },
-    { name: 'Xian Xin', email: 'xianxin@skrine.com', password: 'mypassword456', role: 'User' }
-  ];
-
-  // Helper - safe querySelector
-  function $q(sel, ctx = document) { return ctx.querySelector(sel); }
-  function $qa(sel, ctx = document) { return Array.from(ctx.querySelectorAll(sel)); }
-
-  // ==========================
-  // PASSWORD VISIBILITY
-  // ==========================
-  function togglePassword(icon) {
-      const passwordText = icon.previousElementSibling;
-      if (!passwordText) return;
-      const actualPassword = passwordText.getAttribute('data-password') || '';
-      const isHidden = passwordText.textContent.includes('•');
-
-      if (isHidden) {
-          passwordText.textContent = actualPassword;
-          icon.className = 'fa-solid fa-eye-slash eye-icon';
-      } else {
-          passwordText.textContent = '•'.repeat(actualPassword.length || 8);
-          icon.className = 'fa-solid fa-eye eye-icon';
-      }
-  }
-
-  // ==========================
-  // USER DROPDOWN (TOP-RIGHT)
-  // ==========================
-  const userIcon = document.getElementById('userIcon');
-  const userDropdown = document.getElementById('userDropdown');
-
-  function toggleUserDropdown() {
-    if (!userDropdown) return;
-    userDropdown.classList.toggle('show');
-  }
-
-  userIcon && userIcon.addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleUserDropdown();
-  });
-
-  // Close dropdown when clicking outside
-  document.addEventListener('click', function(e) {
-    if (!userDropdown) return;
-    if (!userDropdown.contains(e.target) && !userIcon.contains(e.target)) {
-      userDropdown.classList.remove('show');
-    }
-  });
-
-  // Logout (uses confirm modal)
-  const logoutItem = document.getElementById('logoutItem');
-  logoutItem && logoutItem.addEventListener('click', () => {
-    showConfirmModal('Are you sure you want to log out?', () => {
-      showPopup('Logging out...', 'success');
-      setTimeout(() => window.location.href = 'signin.html', 600);
-    });
-  });
-
-  // ==========================
-  // ADD USER MODAL
-  // ==========================
-  const addUserModal = document.getElementById('addUserModal');
-  const openAddUserBtn = document.getElementById('openAddUserBtn');
-  const cancelAddUserBtn = document.getElementById('cancelAddUserBtn');
-  const addUserForm = document.getElementById('addUserForm');
-  const modalRoleDropdown = document.getElementById('modalRoleDropdown');
-
-  function openAddUserModal() {
-    if (!addUserModal) return;
-    addUserModal.classList.add('show');
-    addUserModal.setAttribute('aria-hidden', 'false');
-    // default role in modal = User for safer UX
-    setModalRole('User');
-  }
-
-  function closeAddUserModal() {
-    if (!addUserModal) return;
-    addUserModal.classList.remove('show');
-    addUserModal.setAttribute('aria-hidden', 'true');
-    // clear fields
-    $q('#newUserName').value = '';
-    $q('#newUserEmail').value = '';
-    $q('#newUserPassword').value = '';
-    setModalRole('User');
-  }
-
-  function setModalRole(role) {
-    const sel = modalRoleDropdown;
-    if (!sel) return;
-    sel.querySelector('.admin-role-select span').textContent = role;
-    sel.querySelectorAll('.admin-role-option').forEach(opt => {
-      opt.classList.toggle('selected', opt.textContent.trim() === role);
-    });
-  }
-
-  // Close modal by clicking overlay
-  addUserModal && addUserModal.addEventListener('click', function(e) {
-    if (e.target === this) closeAddUserModal();
-  });
-
-  openAddUserBtn && openAddUserBtn.addEventListener('click', openAddUserModal);
-  cancelAddUserBtn && cancelAddUserBtn.addEventListener('click', closeAddUserModal);
-
-  // ==========================
-  // USER MANAGEMENT
-  // ==========================
-  addUserForm && addUserForm.addEventListener('submit', function(event) {
-    event.preventDefault();
-    const name = $q('#newUserName').value.trim();
-    const email = $q('#newUserEmail').value.trim();
-    const password = $q('#newUserPassword').value.trim();
-    const role = modalRoleDropdown.querySelector('.admin-role-option.selected')?.textContent.trim() || 'User';
-
-    if (!name || !email || !password) {
-      showPopup('Please fill in all fields.', 'error');
-      return;
-    }
-
-    users.push({ name, email, password, role });
-    renderUsers();
-    closeAddUserModal();
-    showPopup('User added successfully!', 'success');
-  });
-
-  function deleteUser(index) {
-    showConfirmModal('Are you sure you want to delete this user?', () => {
-      if (index >= 0 && index < users.length) {
-        users.splice(index, 1);
-        renderUsers();
-        showPopup('User deleted successfully!', 'success');
-      }
-    });
-  }
-
-  // ==========================
-  // CUSTOM ROLE DROPDOWN (shared by table rows and modal)
-  // ==========================
-  function toggleRoleDropdown(element) {
-    const dropdown = element.closest('.admin-role-dropdown');
-    if (!dropdown) return;
-    const allDropdowns = document.querySelectorAll('.admin-role-dropdown');
-
-    // Close all others
-    allDropdowns.forEach(d => {
-      if (d !== dropdown) d.classList.remove('show');
-    });
-
-    // Toggle this one
-    const willShow = !dropdown.classList.contains('show');
-    dropdown.classList.toggle('show', willShow);
-  }
-
-  function selectRole(option, index, role) {
-    const dropdown = option.closest('.admin-role-dropdown');
-    if (!dropdown) return;
-
-    // Update visual selection
-    dropdown.querySelectorAll('.admin-role-option').forEach(opt => opt.classList.remove('selected'));
-    option.classList.add('selected');
-    dropdown.querySelector('.admin-role-select span').textContent = role;
-
-    // If it's a user table dropdown (data-index >= 0)
-    const datasetIndex = parseInt(dropdown.getAttribute('data-index'), 10);
-    if (!Number.isNaN(datasetIndex) && datasetIndex >= 0 && users[datasetIndex]) {
-      users[datasetIndex].role = role;
-      renderUsers(); // re-render so indexes stay correct
-      showPopup(`Role updated to ${role}`, 'success');
-    }
-
-    // Close dropdown
-    dropdown.classList.remove('show');
-  }
-
-  // Close role dropdown when clicking outside
-  document.addEventListener('click', (e) => {
-    if (!e.target.closest('.admin-role-dropdown')) {
-      document.querySelectorAll('.admin-role-dropdown').forEach(d => d.classList.remove('show'));
-    }
-  });
-
-  // ==========================
-  // RENDER USERS TABLE
-  // ==========================
-  function renderUsers() {
-    const tbody = document.getElementById('usersTableBody');
-    tbody.innerHTML = '';
-
-    users.forEach((user, index) => {
-      const maskedPassword = '•'.repeat(user.password.length || 8);
-      const tr = document.createElement('tr');
-
-      tr.innerHTML = `
-        <td>${escapeHtml(user.name)}</td>
-        <td>${escapeHtml(user.email)}</td>
-        <td>
-            <div class="password-cell">
-              <span class="password-text" data-password="${escapeAttr(user.password)}">${maskedPassword}</span>
-              <i class="fa-solid fa-eye eye-icon" role="button" title="Show/Hide password"></i>
-            </div>
-        </td>
-        <td>
-            <div class="admin-role-dropdown" data-index="${index}">
-              <div class="admin-role-select" onclick="toggleRoleDropdown(this)">
-                <span>${escapeHtml(user.role)}</span>
-                <i class="fa-solid fa-chevron-down dropdown-icon"></i>
-              </div>
-              <div class="admin-role-options">
-                <div class="admin-role-option ${user.role === 'Admin' ? 'selected' : ''}" onclick="selectRole(this, ${index}, 'Admin')">Admin</div>
-                <div class="admin-role-option ${user.role === 'User' ? 'selected' : ''}" onclick="selectRole(this, ${index}, 'User')">User</div>
-              </div>
-            </div>
-        </td>
-        <td>
-            <button class="admin-delete-btn" onclick="deleteUser(${index})">
-              <i class="fa-solid fa-trash"></i>
-              Delete
-            </button>
-        </td>
-      `;
-      tbody.appendChild(tr);
-
-      // Attach listener for eye icon after it's in DOM
-      const eye = tr.querySelector('.eye-icon');
-      if (eye) {
-        eye.addEventListener('click', (ev) => { ev.stopPropagation(); togglePassword(eye); });
-      }
-    });
-  }
-
-  // Small helpers to avoid simple injection in values
-  function escapeHtml(s) {
-    if (typeof s !== 'string') return '';
-    return s.replace(/[&<>"']/g, function (m) {
-      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m];
-    });
-  }
-  function escapeAttr(s) {
-    if (typeof s !== 'string') return '';
-    return s.replace(/"/g, '&quot;');
-  }
-
-  // ==========================
-  // POPUP NOTIFICATION
-  // ==========================
-  let popupTimeout = null;
-  function showPopup(message, type = 'success') {
-    const popup = document.getElementById('popup');
-    clearTimeout(popupTimeout);
-    popup.textContent = message;
-    popup.className = `admin-popup-notification ${type} show`;
-
-    popupTimeout = setTimeout(() => {
-      popup.classList.remove('show');
-      popup.className = 'admin-popup-notification';
-    }, 3000);
-  }
-
-  // ==========================
-  // CUSTOM CONFIRM MODAL
-  // ==========================
-  const confirmModal = document.getElementById('confirmModal');
-  const confirmMessageEl = document.getElementById('confirmMessage');
-  const confirmCancelBtn = document.getElementById('confirmCancelBtn');
-  const confirmActionBtn = document.getElementById('confirmActionBtn');
-
-  function showConfirmModal(message, onConfirm) {
-    if (!confirmModal) return;
-    confirmMessageEl.textContent = message;
-    confirmModal.style.display = 'flex';
-
-    // remove all previous listeners by cloning the confirm button
-    const newConfirm = confirmActionBtn.cloneNode(true);
-    confirmActionBtn.parentNode.replaceChild(newConfirm, confirmActionBtn);
-
-    // also reset cancel
-    const newCancel = confirmCancelBtn.cloneNode(true);
-    confirmCancelBtn.parentNode.replaceChild(newCancel, confirmCancelBtn);
-
-    // wire up the new buttons
-    newConfirm.addEventListener('click', () => {
-      confirmModal.style.display = 'none';
-      onConfirm && onConfirm();
-    });
-
-    newCancel.addEventListener('click', () => {
-      confirmModal.style.display = 'none';
-    });
-  }
-
-  // expose closeConfirmModal for possible inline use
-  function closeConfirmModal() {
-    if (confirmModal) confirmModal.style.display = 'none';
-  }
-
-  // ==========================
-  // INITIALIZE ON LOAD
-  // ==========================
-  document.addEventListener('DOMContentLoaded', () => {
-    renderUsers();
-  });
-
-  // Accessibility: allow Escape to close modal/dropdowns
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      // close add user modal
-      if (addUserModal && addUserModal.classList.contains('show')) closeAddUserModal();
-      // close role dropdowns
-      document.querySelectorAll('.admin-role-dropdown.show').forEach(d => d.classList.remove('show'));
-      // close user dropdown
-      userDropdown && userDropdown.classList.remove('show');
-      // close confirm modal
-      confirmModal && (confirmModal.style.display = 'none');
-    }
-  });
-</script>
+  <script src="admin.js"></script>
 </body>
 </html>
