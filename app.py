@@ -30,31 +30,6 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# # --- Backup In-Case (Hardcoded) ---
-# @app.route('/signin', methods=['GET', 'POST'])
-# def signin():
-#     if request.method == 'POST':
-#         email = request.form.get('email')
-#         password = request.form.get('password')
-
-#         # --- NEW DATABASE-DRIVEN AUTHENTICATION ---
-#         user = db.get_user_by_email(email) # Fetch user from DB
-
-#         # Check if user exists and if the password hash matches
-#         if user and check_password_hash(user['password_hash'], password):
-#             # The user['password_hash'] comes from the database
-#             # The 'password' is the plain text from the form
-            
-#             flash('You were successfully logged in!', 'success')
-#             # Here you would typically set up a user session
-#             # session['user_id'] = user['id']
-#             return redirect(url_for('menu'))
-#         else:
-#             flash('Invalid email or password. Please try again.', 'danger')
-#             return render_template('signin.html')
-
-#     return render_template('signin.html')
-
 @app.route('/signin', methods=['GET', 'POST'])
 def signin():
     if request.method == 'POST':
@@ -112,46 +87,6 @@ def register():
 
     # If GET request, just show the registration page
     return render_template('register.html') # You will need to create this HTML file
-# ===============================================================================================
-
-# In app.py, replace the old '/api/search' route with this new one.
-
-# @app.route('/api/combined_search', methods=['POST'])
-# def api_combined_search():
-#     words = request.form.get('words')
-#     class_filter = request.form.get('class_filter')
-#     image_file = request.files.get('image')
-
-#     image_search_ids = None # By default, don't filter by image
-
-#     if image_file:
-#         print(f"Performing image search for: {image_file.filename}")
-#         # 1. Generate embedding for the uploaded image
-#         query_embedding = ml_model.generate_image_embedding(image_file.stream)
-        
-#         if query_embedding is not None:
-#             # 2. Use FAISS to find similar image IDs
-#             image_search_ids = ml_model.search_faiss_index(query_embedding)
-#             print(f"FAISS found {len(image_search_ids)} similar image candidates.")
-            
-#             # If FAISS finds nothing, we must ensure the final query returns no results.
-#             if not image_search_ids:
-#                 return jsonify([]) # Return an empty list immediately
-#         else:
-#             # If the image couldn't be processed, return an error or empty result
-#             return jsonify([])
-
-#     # 3. Pass the list of IDs (or None) to our database function
-#     results = db.search_trademarks(
-#         words=words,
-#         class_filter=class_filter,
-#         id_list=image_search_ids 
-#     )
-    
-#     results_list = [dict(row) for row in results]
-#     return jsonify(results_list)
-
-
 # ===============================================================================================
 # FOR TEXT SEARCH
 
