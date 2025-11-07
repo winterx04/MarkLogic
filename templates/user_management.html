@@ -11,19 +11,22 @@
 <body>
   <div class="image-background"></div>
 
-  <!-- Header Logo -->
-  <a href="{{ url_for('admin_page') }}" style="text-decoration: none; color: inherit;">
-    <div class="header-logo" style="display:flex; align-items:center; gap:12px; position:fixed; left:24px; top:24px; z-index:20;">
-      <div class="header-logo-image" style="width:40px; height:40px;"><img src="{{ url_for('static', filename='icons/logo.png') }}" alt="MarkLogic Logo" style="width:100%; height:100%; object-fit:contain;"></div>
-      <div class="header-brand" style="color:rgba(255,255,255,0.95);"><div class="header-brand-name" style="font-weight:700;">MarkLogic</div><div class="header-slogan" style="font-size:12px; opacity:0.85;">User Management</div></div>
+  <!-- Header Logo: Link back to the admin menu dashboard -->
+  <a href="{{ url_for('admin_page') }}" class="header-logo-link" style="text-decoration: none; color: inherit;">
+    <div class="header-logo">
+      <div class="header-logo-image"><img src="{{ url_for('static', filename='icons/logo.png') }}" alt="MarkLogic Logo"></div>
+      <div class="header-brand">
+        <div class="header-brand-name">MarkLogic</div>
+        <div class="header-slogan">Admin Dashboard</div>
+      </div>
     </div>
   </a>
 
   <div class="admin-title-header"><h1>User Management</h1></div>
 
   <!-- User Icon and Dropdown -->
-  <div class="user-icon" id="userIcon" title="User menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></div>
-  <div class="user-dropdown" id="userDropdown"><div class="user-dropdown-item" id="logoutItem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>Log Out</div></div>
+  <div class="user-icon" id="userIcon" title="User menu"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></div>
+  <div class="user-dropdown" id="userDropdown"><div class="user-dropdown-item" id="logoutItem"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>Log Out</div></div>
 
   <!-- Main Container -->
   <div class="admin-container">
@@ -33,15 +36,19 @@
     <div class="admin-table-container">
       <table class="users-table">
         <thead>
-          <tr><th>Name</th><th>Email</th><th>Password</th><th>Role</th><th>Action</th></tr>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Action</th>
+          </tr>
         </thead>
         <tbody id="usersTableBody">
-          <!-- Data is rendered by Jinja2 on initial load -->
+          <!-- Data is now rendered by Jinja2 on initial load -->
           {% for user in users %}
           <tr data-user-id="{{ user.id }}">
-              <td>{{ user.username }}</td>
-              <td>{{ user.email }}</td>
-              <td><div class="password-cell"><span class="password-text">••••••••</span></div></td>
+              <td class="user-name">{{ user.username }}</td>
+              <td class="user-email">{{ user.email }}</td>
               <td>
                   <div class="admin-role-dropdown" data-user-id="{{ user.id }}">
                       <div class="admin-role-select">
@@ -54,7 +61,16 @@
                       </div>
                   </div>
               </td>
-              <td><button class="admin-delete-btn"><i class="fa-solid fa-trash"></i>Delete</button></td>
+              <td>
+                  <button class="admin-edit-btn">
+                      <i class="fa-solid fa-pen-to-square"></i>
+                      Edit
+                  </button>
+                  <button class="admin-delete-btn">
+                      <i class="fa-solid fa-trash"></i>
+                      Delete
+                  </button>
+              </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -63,7 +79,7 @@
   </div>
 
   <!-- ======================================================= -->
-  <!-- ADD USER MODAL (FULL CODE)                              -->
+  <!-- ADD USER MODAL (Password Field Removed)                 -->
   <!-- ======================================================= -->
   <div class="admin-modal-overlay" id="addUserModal" aria-hidden="true">
     <div class="admin-modal-box" role="dialog" aria-modal="true" aria-labelledby="addUserTitle">
@@ -77,10 +93,9 @@
           <label class="form-label">Email</label><br>
           <input type="email" class="form-input" id="newUserEmail" placeholder="Enter email" required style="width:100%; padding:10px; border-radius:8px; border:1px solid rgba(0,0,0,0.1);">
         </div>
-        <div class="form-group" style="margin-bottom:12px;">
-          <label class="form-label">Password</label><br>
-          <input type="password" class="form-input" id="newUserPassword" placeholder="Enter password" required style="width:100%; padding:10px; border-radius:8px; border:1px solid rgba(0,0,0,0.1);">
-        </div>
+        
+        <!-- The Password field has been intentionally removed for the email invitation system -->
+
         <div class="form-group" style="margin-bottom:6px;">
           <label class="form-label">Role</label><br>
           <div class="admin-role-dropdown" id="modalRoleDropdown">
@@ -117,8 +132,9 @@
     </div>
   </div>
 
-  <!-- Link to the external JS file -->
-  <script src="{{ url_for('static', filename='admin.js') }}"></script>
+  <!-- This page requires all three scripts -->
+  <script src="{{ url_for('static', filename='utils.js') }}"></script>
   <script src="{{ url_for('static', filename='logout.js') }}"></script>
+  <script src="{{ url_for('static', filename='user_management.js') }}"></script>
 </body>
 </html>

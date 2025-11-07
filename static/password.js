@@ -41,8 +41,6 @@ toggleConfirmPassword.addEventListener('click', () => {
       : '<i class="fa-solid fa-eye-slash"></i>';
 });
 
-// ✅ The rest of your JS (validation, strength, etc.) stays the same
-
 
     // Password validation
     function validatePassword(password) {
@@ -156,7 +154,6 @@ toggleConfirmPassword.addEventListener('click', () => {
 
     // Form submission
     passwordForm.addEventListener('submit', (e) => {
-      e.preventDefault();
 
       const password = passwordInput.value;
       const confirmPassword = confirmPasswordInput.value;

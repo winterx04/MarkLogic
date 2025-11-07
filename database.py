@@ -58,29 +58,6 @@ def init_db():
 # USER MANAGEMENT FUNCTIONS 
 # ==============================================================================
 
-def add_user(username, email, password_hash):
-    """
-    Inserts a new user into the users table.
-    IMPORTANT: You must hash the password *before* calling this function.
-    """
-    conn = get_db_connection()
-    cur = conn.cursor()
-    try:
-        cur.execute("""
-            INSERT INTO users (username, email, password_hash) VALUES (%s, %s, %s)
-        """, (username, email, password_hash))
-        conn.commit()
-    except psycopg2.IntegrityError:
-        conn.rollback()  # Rollback the transaction on error
-        raise ValueError(f"User with username '{username}' or email '{email}' already exists.")
-    except Exception as e:
-        conn.rollback()
-        print(f"Database error adding user: {e}")
-        raise e
-    finally:
-        cur.close()
-        conn.close()
-
 def get_user_by_email(email):
     """Fetches a user record by their email address."""
     conn = get_db_connection()
@@ -351,3 +328,74 @@ def update_user_role(user_id, new_role):
     finally:
         cur.close()
         conn.close()
+
+def update_user_details(user_id, new_name, new_email):
+    """Updates a user's name and email address."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "UPDATE users SET username = %s, email = %s WHERE id = %s",
+            (new_name, new_email, user_id)
+        )
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"Database error updating user details: {e}")
+        raise e
+    finally:
+        cur.close()
+        conn.close()
+
+# In your database.py file
+
+def add_user(username, email, password_hash):
+    """Inserts a new user and marks their password as temporary."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # For any new user, always set the temporary password flag to TRUE
+        cur.execute("""
+            INSERT INTO users (username, email, password_hash, is_temporary_password) VALUES (%s, %s, %s, TRUE)
+        """, (username, email, password_hash))
+        conn.commit()
+    except psycopg2.IntegrityError:
+        conn.rollback()
+        raise ValueError(f"User with username '{username}' or email '{email}' already exists.")
+    finally:
+        cur.close()
+        conn.close()
+
+#==============================================================================
+# FIRST-TIME USER FUNCTIONS
+#==============================================================================
+
+def add_user(username, email, password_hash):
+    """Inserts a new user and marks their password as temporary."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # For any new user, always set the temporary password flag to TRUE
+        cur.execute("""
+            INSERT INTO users (username, email, password_hash, is_temporary_password) VALUES (%s, %s, %s, TRUE)
+        """, (username, email, password_hash))
+        conn.commit()
+    except psycopg2.IntegrityError:
+        conn.rollback()
+        raise ValueError(f"User with username '{username}' or email '{email}' already exists.")
+    finally:
+        cur.close()
+        conn.close()
+
+
+def update_password_and_deactivate_temp_flag(user_id, new_password_hash):
+    """Updates a user's password and sets the temporary flag to FALSE."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE users SET password_hash = %s, is_temporary_password = FALSE WHERE id = %s",
+        (new_password_hash, user_id)
+    )
+    conn.commit()
+    cur.close()
+    conn.close()

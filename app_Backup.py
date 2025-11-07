@@ -16,7 +16,7 @@ app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
 # IMPORTANT: Use environment variables in production for security
 app.config['MAIL_USERNAME'] = 'xxin589@gmail.com'  # <-- REPLACE with your Gmail
-app.config['MAIL_PASSWORD'] = 'jjxh vzax yjyj njsu' # <-- REPLACE with your App Password
+app.config['MAIL_PASSWORD'] = 'delirious43' # <-- REPLACE with your App Password
 app.config['MAIL_DEFAULT_SENDER'] = ('MarkLogic Admin', 'xxin589@gmail.com')
 
 mail = Mail(app)
@@ -48,30 +48,28 @@ def signin():
     if request.method == 'POST':
         email = request.form.get('email')
         password = request.form.get('password')
+
         user = db.get_user_by_email(email)
 
         if user and check_password_hash(user['password_hash'], password):
-            # Login successful, set up the session
+            # --- SESSION MANAGEMENT ---
+            # Store user info in the session to remember them
             session['logged_in'] = True
             session['user_id'] = user['id']
             session['username'] = user['username']
-            session['role'] = user['role']
+            session['role'] = user['role'] # Store the role!
             
-            # --- THIS IS THE KEY CHECK ---
-            if user['is_temporary_password']:
-                session['force_password_change'] = True
-                flash('Welcome! Please create a new password to secure your account.', 'info')
-                return redirect(url_for('change_password')) # Force redirect
-
-            # Regular login flow
             flash(f'Welcome back, {user["username"]}!', 'success')
+
+            # --- ROLE-BASED REDIRECTION ---
             if user['role'].lower() == 'admin':
-                return redirect(url_for('admin'))
+                return redirect(url_for('admin_page')) # Redirect admins to the admin page
             else:
-                return redirect(url_for('menu'))
+                return redirect(url_for('menu')) # Redirect regular users to the menu
         else:
             flash('Invalid email or password. Please try again.', 'danger')
-    
+            return render_template('signin.html')
+
     return render_template('signin.html')
 # ===============================================================================================
 # FOR ADMIN USER REGISTRATION
@@ -239,43 +237,23 @@ def api_add_user():
     data = request.get_json()
     username = data.get('name')
     email = data.get('email')
-    role = data.get('role') # No password from form
+    password = data.get('password')
+    role = data.get('role')
 
-    if not all([username, email, role]):
-        return jsonify({'success': False, 'message': 'Name, email, and role are required.'}), 400
+    if not all([username, email, password, role]):
+        return jsonify({'success': False, 'message': 'All fields are required.'}), 400
 
+    password_hash = generate_password_hash(password)
     try:
-        # 1. Generate a secure, random temporary password
-        temp_password = secrets.token_urlsafe(10) # e.g., 'aBcDeFgH_123'
-        password_hash = generate_password_hash(temp_password)
-
-        # 2. Add the user to the DB with the hashed temp password
-        # The add_user function should set is_temporary_password to TRUE by default
-        db.add_user(username, email, password_hash) 
+        db.add_user(username, email, password_hash)
+        # We also need to add 'role' to the user, let's update the user after creation
         new_user = db.get_user_by_email(email)
         db.update_user_role(new_user['id'], role)
-
-        # 3. Send the temporary password email
-        msg = Message('Your MarkLogic Account has been Created', recipients=[email])
-        msg.body = f'''Hello {username},
-
-An admin has created an account for you. Please sign in at the main login page using your email and the following temporary password:
-
-Temporary Password: {temp_password}
-
-You will be required to set a new, permanent password immediately after your first login.
-
-Thank you,
-The MarkLogic Team
-'''
-        mail.send(msg)
-
-        return jsonify({'success': True, 'message': f'Invitation with temporary password sent to {email}!'})
+        return jsonify({'success': True, 'message': 'User added successfully!'})
     except ValueError as e: # Catches duplicate user error
         return jsonify({'success': False, 'message': str(e)}), 409
     except Exception as e:
-        print(f"ERROR sending email or creating user: {e}")
-        return jsonify({'success': False, 'message': 'An internal server error occurred.'}), 500
+        return jsonify({'success': False, 'message': 'An internal error occurred.'}), 500
 
 # --- NEW: API Route to DELETE a user ---
 @app.route('/api/users/delete/<int:user_id>', methods=['DELETE'])
@@ -322,38 +300,54 @@ def api_edit_user():
         # This can catch errors if the new email is already taken
         return jsonify({'success': False, 'message': 'Failed to update user. The email may already be in use.'}), 500
     
-# --- NEW: Route for the forced password change page ---
+# --- NEW: Routes for the forced password change ---
 @app.route('/change-password', methods=['GET', 'POST'])
 def change_password():
+    """
+    Handles both displaying the 'change password' page and processing the form submission.
+    This page is for first-time users forced to change their temporary password.
+    """
+    # --- Security Check ---
+    # Protect this page: only users who have been flagged during login can access it.
+    # If a user tries to go to /change-password directly, redirect them away.
     if 'force_password_change' not in session:
+        # You can redirect them to the menu or signin page
+        flash('This page is only for first-time password setup.', 'info')
         return redirect(url_for('menu'))
 
+    # --- Handle Form Submission ---
     if request.method == 'POST':
         password = request.form.get('password')
         password_confirm = request.form.get('password_confirm')
-        
-        if not password or password != password_confirm:
-            flash('Passwords do not match or are empty.', 'danger')
+
+        # --- Server-Side Validation ---
+        if not password or len(password) < 8: # Match the 8-character requirement
+            flash('Password is too short (minimum 8 characters).', 'danger')
             return redirect(url_for('change_password'))
         
+        if password != password_confirm:
+            flash('Passwords do not match. Please try again.', 'danger')
+            return redirect(url_for('change_password'))
+        
+        # --- Update the Database ---
+        # Hash the new, permanent password
         new_password_hash = generate_password_hash(password)
+        # Call the database function to update the password and set the temporary flag to FALSE
         db.update_password_and_deactivate_temp_flag(session['user_id'], new_password_hash)
         
+        # --- Finalize the Session ---
+        # The password is now permanent, so we can remove the flag
         session.pop('force_password_change', None)
+        
         flash('Your password has been updated successfully!', 'success')
         
-        # --- DEBUGGING AND FIX ---
-        user_role = session.get('role', '').lower()
-        print(f"DEBUG: User role is '{user_role}'. Preparing to redirect.") # This will print in your terminal
-
-        if user_role == 'admin':
-            print("DEBUG: Redirecting to admin_page.")
-            # Ensure your admin function is named 'admin_page'
-            return redirect(url_for('admin')) 
+        # Redirect the user to their appropriate dashboard based on their role
+        if session.get('role', '').lower() == 'admin':
+            return redirect(url_for('admin_page'))
         else:
-            print("DEBUG: Redirecting to menu.")
-            # Ensure your menu function is named 'menu'
             return redirect(url_for('menu'))
+
+    # --- If it's a GET request, just show the page ---
     return render_template('change_password.html')
 
 @app.route('/logout')
