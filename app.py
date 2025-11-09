@@ -9,6 +9,8 @@ import secrets
 
 app = Flask(__name__)
 app.secret_key = 'a_secure_random_secret_key'
+# --- Tune this threshold for similar search  ---
+app.config['EXACT_MATCH_THRESHOLD'] = 0.05 
 
 # --- INITIALIZE THE EMAIL  ---
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
@@ -66,7 +68,7 @@ def signin():
             # Regular login flow
             flash(f'Welcome back, {user["username"]}!', 'success')
             if user['role'].lower() == 'admin':
-                return redirect(url_for('admin'))
+                return redirect(url_for('admin_page'))
             else:
                 return redirect(url_for('menu'))
         else:
@@ -127,46 +129,100 @@ def api_text_search():
 # ===============================================================================================
 # FOR VISUAL SEARCH REGISTRATION
 
+# @app.route('/api/image_search', methods=['POST'])
+# def api_image_search():
+#     # --- 1. Get Inputs ---
+#     # We still get text fields in case the user filled them out, to use as filters
+#     words = request.form.get('words')
+#     class_filter = request.form.get('class_filter')
+#     image_file = request.files.get('image')
+
+#     # Image is mandatory for this endpoint
+#     if not image_file:
+#         return jsonify({'error': 'No image file provided for the search.'}), 400
+
+#     # --- 2. Perform Image Similarity Search ---
+#     print(f"Performing image search for: {image_file.filename}")
+#     query_embedding = ml_model.generate_image_embedding(image_file.stream)
+    
+#     if query_embedding is None:
+#         return jsonify([]) # Image could not be processed
+
+#     # Use FAISS to find the IDs of the most visually similar logos
+#     similar_ids = ml_model.search_logo_index(query_embedding)
+
+#     if not similar_ids:
+#         return jsonify([]) # No similar images found
+
+#     # --- 3. Fetch Full Data from Database, Applying Text Filters ---
+#     # We use the text/class fields as post-filters on the image search results
+#     results = db.search_trademarks(
+#         words=words,
+#         class_filter=class_filter,
+#         id_list=similar_ids # This is the crucial filter
+#     )
+    
+#     # --- 4. Sort and Return Results ---
+#     # Preserve the similarity ranking from FAISS
+#     results_dict = {row['id']: dict(row) for row in results}
+#     sorted_results = [results_dict[res_id] for res_id in similar_ids if res_id in results_dict]
+
+#     return jsonify(sorted_results)
+
 @app.route('/api/image_search', methods=['POST'])
 def api_image_search():
     # --- 1. Get Inputs ---
-    # We still get text fields in case the user filled them out, to use as filters
     words = request.form.get('words')
     class_filter = request.form.get('class_filter')
     image_file = request.files.get('image')
 
-    # Image is mandatory for this endpoint
     if not image_file:
         return jsonify({'error': 'No image file provided for the search.'}), 400
 
-    # --- 2. Perform Image Similarity Search ---
-    print(f"Performing image search for: {image_file.filename}")
+    # --- 2. Generate Image Embedding ---
     query_embedding = ml_model.generate_image_embedding(image_file.stream)
     
     if query_embedding is None:
-        return jsonify([]) # Image could not be processed
+        return jsonify({'error': 'Could not process the provided image file.'}), 400
 
-    # Use FAISS to find the IDs of the most visually similar logos
-    similar_ids = ml_model.search_logo_index(query_embedding)
+    # --- 3. Perform Similarity Search and Get Distances ---
+    try:
+        distances, similar_ids = ml_model.search_logo_index(query_embedding, return_distances=True)
+    except Exception as e:
+        print(f"Error during FAISS search: {e}")
+        return jsonify({'error': 'An internal error occurred during the search.'}), 500
 
     if not similar_ids:
-        return jsonify([]) # No similar images found
+        return jsonify([])
 
-    # --- 3. Fetch Full Data from Database, Applying Text Filters ---
-    # We use the text/class fields as post-filters on the image search results
+    # --- 4. Filter Results by the Strict Threshold ---
+    exact_match_ids = []
+    # Use the threshold from the app's configuration
+    threshold = app.config['EXACT_MATCH_THRESHOLD']
+
+    for i in range(len(similar_ids)):
+        dist = distances[i]
+        logo_id = similar_ids[i]
+        if dist <= threshold:
+            exact_match_ids.append(logo_id)
+            print(f"Found an exact match. ID: {logo_id}, Distance: {dist:.4f}")
+
+    if not exact_match_ids:
+        return jsonify([]) # Return empty if no logos met the strict criteria
+
+    # --- 5. Fetch Full Data for the EXACT Matches from the Database ---
     results = db.search_trademarks(
         words=words,
         class_filter=class_filter,
-        id_list=similar_ids # This is the crucial filter
+        id_list=exact_match_ids
     )
     
-    # --- 4. Sort and Return Results ---
-    # Preserve the similarity ranking from FAISS
+    # --- 6. Sort and Return Results ---
+    # Preserve the similarity ranking from FAISS to ensure the best match is first.
     results_dict = {row['id']: dict(row) for row in results}
-    sorted_results = [results_dict[res_id] for res_id in similar_ids if res_id in results_dict]
+    sorted_results = [results_dict[res_id] for res_id in exact_match_ids if res_id in results_dict]
 
     return jsonify(sorted_results)
-
 
 # --- Route to serve trademark logos ---
 @app.route('/logo/<int:trademark_id>')

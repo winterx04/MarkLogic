@@ -57,19 +57,62 @@ class MLModel:
         self.logo_index.add_with_ids(logo_embeddings_np, np.array(self.id_map).astype('int64'))
         print(f"FAISS logo index built successfully with {self.logo_index.ntotal} vectors.")
 
-    def search_logo_index(self, query_embedding, top_k=50):
-        """Searches the FAISS index for the most similar images."""
-        if self.logo_index is None or self.logo_index.ntotal == 0:
-            print("FAISS logo index is not built or is empty.")
-            return []
+    # In your ml_utils.py file
 
-        query_embedding_np = np.array([query_embedding]).astype('float32')
-        # Normalize the query vector to match the index
-        faiss.normalize_L2(query_embedding_np)
+    def search_logo_index(self, query_embedding, return_distances=False):
+        """
+        Searches the FAISS index for the most similar logo embeddings.
+        This version is corrected for Cosine Similarity (IndexFlatIP).
+        """
+        # Add a crucial check to ensure the index has been built
+        if self.logo_index is None or self.logo_index.ntotal == 0:
+            print("Error: FAISS logo index is not built or is empty.")
+            return ([], []) if return_distances else []
+
+        # FAISS expects a 2D numpy array of type float32
+        if query_embedding.ndim == 1:
+            query_embedding = np.expand_dims(query_embedding, axis=0).astype('float32')
+
+        # --- CRUCIAL FIX for COSINE SIMILARITY ---
+        # You MUST normalize the query vector to match the index vectors.
+        faiss.normalize_L2(query_embedding)
+
+        num_results_to_fetch = 10
+
+        # `search` returns similarity scores (higher is better) and the stored database IDs
+        similarities, found_ids = self.logo_index.search(query_embedding, num_results_to_fetch)
+
+        # Flatten the results and filter out -1 (which means no result found)
+        id_list = [int(i) for i in found_ids[0] if i != -1]
         
-        # Perform the search
-        distances, indices = self.logo_index.search(query_embedding_np, top_k)
+        if return_distances:
+            similarity_list = similarities[0]
+            
+            # --- CONVERT SIMILARITY TO DISTANCE ---
+            # Similarity Score: 1.0 = perfect match, -1.0 = opposite.
+            # Distance:         0.0 = perfect match, > 0 = less similar.
+            # This makes the threshold logic (dist <= THRESHOLD) intuitive and correct.
+            distances = [1 - sim for sim, i in zip(similarity_list, found_ids[0]) if i != -1]
+            
+            return distances, id_list
+        else:
+            return id_list
+
+# BELOW ARE THE OLD SEARCH WHICH SHOWS SIMILAR RESULTS
+
+    # def search_logo_index(self, query_embedding, top_k=50):
+    #     """Searches the FAISS index for the most similar images."""
+    #     if self.logo_index is None or self.logo_index.ntotal == 0:
+    #         print("FAISS logo index is not built or is empty.")
+    #         return []
+
+    #     query_embedding_np = np.array([query_embedding]).astype('float32')
+    #     # Normalize the query vector to match the index
+    #     faiss.normalize_L2(query_embedding_np)
         
-        # The 'indices' are the database IDs we stored. Filter out -1 (no result).
-        found_ids = [int(i) for i in indices[0] if i != -1]
-        return found_ids
+    #     # Perform the search
+    #     distances, indices = self.logo_index.search(query_embedding_np, top_k)
+        
+    #     # The 'indices' are the database IDs we stored. Filter out -1 (no result).
+    #     found_ids = [int(i) for i in indices[0] if i != -1]
+    #     return found_ids
