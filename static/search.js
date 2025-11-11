@@ -98,7 +98,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td>${trademark.class_indices || 'N/A'}</td>
                     <td class="id-cell">${trademark.serial_number || 'N/A'}</td>
                     <td>${trademark.applicant_name || 'N/A'}</td>
-                    <td>${trademark.description || 'N/A'}</td>
+                    <td>${trademark.agent_details || 'N/A'}</td> {/* <-- CORRECTED */}
+                    <td>${trademark.description || 'N/A'}</td>   {/* <-- CORRECTED */}
                 </tr>`;
             resultsBody.insertAdjacentHTML('beforeend', rowHtml);
         });

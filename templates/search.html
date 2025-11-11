@@ -75,9 +75,10 @@
             <tr>
               <th class="trademark-cell">Trademark</th>
               <th>Class</th>
-              <th class="id-cell">Serial Number</th> <!-- Changed from ID -->
+              <th class="id-cell">Serial Number</th> 
               <th>Applicant</th>
-              <th>Description</th> <!-- Changed from Agent -->
+              <th >Agent Details</th>
+              <th>Description</th> 
             </tr>
           </thead>
           <tbody id="resultsBody">
@@ -100,6 +101,7 @@
               <td>{{ trademark.class_indices or 'N/A' }}</td>
               <td class="id-cell">{{ trademark.serial_number or 'N/A' }}</td>
               <td>{{ trademark.applicant_name or 'N/A' }}</td>
+              <td>{{ trademark.agent_details or 'N/A' }}</td>
               <td>{{ trademark.description or 'N/A' }}</td>
             </tr>
             {% endfor %}

@@ -7,3 +7,6 @@ Allow All - [A]
 
 Step 2
 Enter virtual environment: .venv\Scripts\activate
+
+
+CURRENT DEMO password is X112233D.a

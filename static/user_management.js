@@ -107,6 +107,89 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // =====================================================================
+    // PASSWORD RESET LOGIC (ADMIN RESETTING A USER'S PASSWORD) FOR ITERATION 2
+    // =====================================================================
+
+    // const handleFormSubmit = (event) => {
+    //     event.preventDefault();
+    //     const name = document.getElementById('newUserName').value.trim();
+    //     const email = document.getElementById('newUserEmail').value.trim();
+    //     // This is the new password field from the edit modal
+    //     const newPassword = document.getElementById('editUserPassword').value.trim();
+    //     // Get the role, only needed for adding a new user
+    //     const role = document.querySelector('#modalRoleDropdown .admin-role-option.selected')?.dataset.value || 'User';
+    //     const editId = addUserForm.dataset.editId;
+
+    //     if (!name || !email) {
+    //         showPopup('Name and email are required.', 'error');
+    //         return;
+    //     }
+
+    //     if (editId) {
+    //         // --- EDIT LOGIC ---
+
+    //         // Step 1: Update the user's name and email.
+    //         fetch('/api/users/edit', {
+    //             method: 'POST',
+    //             headers: { 'Content-Type': 'application/json' },
+    //             body: JSON.stringify({ id: editId, name, email })
+    //         })
+    //         .then(res => res.json())
+    //         .then(data => {
+    //             // Show the result of the name/email update
+    //             showPopup(data.message, data.success ? 'success' : 'error');
+
+    //             // Step 2: Check if a new password was entered.
+    //             if (data.success && newPassword) {
+    //                 // If the name/email update was successful AND there's a new password,
+    //                 // make the second API call to reset the password.
+    //                 fetch('/api/users/admin_reset_password', {
+    //                     method: 'POST',
+    //                     headers: { 'Content-Type': 'application/json' },
+    //                     body: JSON.stringify({ id: editId, password: newPassword })
+    //                 })
+    //                 .then(res => res.json())
+    //                 .then(passwordData => {
+    //                     // Show the result of the password reset action
+    //                     showPopup(passwordData.message, passwordData.success ? 'success' : 'error');
+    //                 });
+    //             }
+
+    //             // Step 3: Close the modal and reload the page to see all changes.
+    //             if (data.success) {
+    //                 closeAddUserModal();
+    //                 // Use a short delay to allow the user to read the popup messages.
+    //                 setTimeout(() => {
+    //                     window.location.reload();
+    //                 }, 1500); // 1.5 second delay
+    //             }
+    //         })
+    //         .catch(error => {
+    //             console.error('Error updating user:', error);
+    //             showPopup('A network error occurred.', 'error');
+    //         });
+
+    //     } else {
+    //         // --- ADD LOGIC (This remains the same for the email invitation system) ---
+    //         fetch('/api/users/add', {
+    //             method: 'POST',
+    //             headers: { 'Content-Type': 'application/json' },
+    //             body: JSON.stringify({ name, email, role })
+    //         })
+    //         .then(res => res.json())
+    //         .then(data => {
+    //             showPopup(data.message, data.success ? 'success' : 'error');
+    //             if (data.success) {
+    //                 closeAddUserModal();
+    //                 setTimeout(() => {
+    //                     window.location.reload();
+    //                 }, 2000); // 2 second delay
+    //             }
+    //         });
+    //     }
+    // };
+
     const handleDelete = (button) => {
         const row = button.closest('tr');
         const userId = row.dataset.userId;
