@@ -57,7 +57,6 @@ class MLModel:
         self.logo_index.add_with_ids(logo_embeddings_np, np.array(self.id_map).astype('int64'))
         print(f"FAISS logo index built successfully with {self.logo_index.ntotal} vectors.")
 
-    # In your ml_utils.py file
 
     def search_logo_index(self, query_embedding, return_distances=False):
         """
@@ -74,7 +73,7 @@ class MLModel:
             query_embedding = np.expand_dims(query_embedding, axis=0).astype('float32')
 
         # --- CRUCIAL FIX for COSINE SIMILARITY ---
-        # You MUST normalize the query vector to match the index vectors.
+        # MUST normalize the query vector to match the index vectors.
         faiss.normalize_L2(query_embedding)
 
         num_results_to_fetch = 10
