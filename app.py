@@ -9,6 +9,7 @@ import secrets
 
 app = Flask(__name__)
 app.secret_key = 'a_secure_random_secret_key'
+
 # --- Tune this threshold for similar search  ---
 app.config['EXACT_MATCH_THRESHOLD'] = 0.05 
 
@@ -291,24 +292,24 @@ def user_management():
 
 # RESET PASSWORD FUNCTIONALITY FOR ADMIN TO RESET A USER'S PASSWORD FOR ITERATION 2
 
-# @app.route('/api/users/admin_reset_password', methods=['POST'])
-# @admin_required
-# def api_admin_reset_password():
-#     data = request.get_json()
-#     user_id = data.get('id')
-#     new_password = data.get('password')
+@app.route('/api/users/admin_reset_password', methods=['POST'])
+@admin_required
+def api_admin_reset_password():
+    data = request.get_json()
+    user_id = data.get('id')
+    new_password = data.get('password')
 
-#     if not user_id or not new_password:
-#         return jsonify({'success': False, 'message': 'User ID and new password are required.'}), 400
+    if not user_id or not new_password:
+        return jsonify({'success': False, 'message': 'User ID and new password are required.'}), 400
 
-#     try:
-#         new_password_hash = generate_password_hash(new_password)
-#         db.admin_reset_password(user_id, new_password_hash)
-#         # You would then communicate this new temp password to the user out-of-band
-#         return jsonify({'success': True, 'message': f'Password has been reset. Please provide the new temporary password to the user.'})
-#     except Exception as e:
-#         print(f"Error resetting password: {e}")
-#         return jsonify({'success': False, 'message': 'Failed to reset password.'}), 500
+    try:
+        new_password_hash = generate_password_hash(new_password)
+        db.admin_reset_password(user_id, new_password_hash)
+        # You would then communicate this new temp password to the user out-of-band
+        return jsonify({'success': True, 'message': f'Password has been reset. Please provide the new temporary password to the user.'})
+    except Exception as e:
+        print(f"Error resetting password: {e}")
+        return jsonify({'success': False, 'message': 'Failed to reset password.'}), 500
 
 # --- NEW: API Route to ADD a new user ---
 @app.route('/api/users/add', methods=['POST'])

@@ -4614,3 +4614,46 @@ color: #000;
 }
 
 
+/* ======================================================= */
+/* STYLES FOR FLASK FLASH MESSAGES                         */
+/* ======================================================= */
+
+.flash-message {
+    padding: 15px;
+    margin-bottom: 20px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 500;
+    text-align: center;
+    border: 1px solid transparent;
+}
+
+/* Style for error messages (like invalid login) */
+.flash-message.danger {
+    color: #f8d7da; /* Light red text */
+    background-color: rgba(220, 53, 69, 0.3); /* Translucent red background */
+    border-color: rgba(220, 53, 69, 0.5); /* Slightly darker red border */
+}
+
+/* Style for success messages (like password updated) */
+.flash-message.success {
+    color: #d1e7dd;
+    background-color: rgba(25, 135, 84, 0.3);
+    border-color: rgba(25, 135, 84, 0.5);
+}
+
+/* Style for informational messages */
+.flash-message.info {
+    color: #cff4fc;
+    background-color: rgba(13, 202, 240, 0.3);
+    border-color: rgba(13, 202, 240, 0.5);
+}
+
+/* ======================================================= */
+/* STYLE FOR INVALID FORM INPUTS                           */
+/* ======================================================= */
+
+.form-input.error-input {
+    border-color: #e74c3c; /* A noticeable red border */
+    box-shadow: 0 0 0 4px rgba(220, 53, 69, 0.15); /* A subtle red glow */
+}
