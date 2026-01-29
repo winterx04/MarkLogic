@@ -191,7 +191,6 @@ def get_all_embeddings():
         else:
             # If no embedding exists, append an array of zeros.
             db_data['logo'].append(np.zeros(logo_dim, dtype=np.float32))
-            
     return db_data
 
 

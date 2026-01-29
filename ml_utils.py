@@ -97,21 +97,3 @@ class MLModel:
         else:
             return id_list
 
-# BELOW ARE THE OLD SEARCH WHICH SHOWS SIMILAR RESULTS
-
-    # def search_logo_index(self, query_embedding, top_k=50):
-    #     """Searches the FAISS index for the most similar images."""
-    #     if self.logo_index is None or self.logo_index.ntotal == 0:
-    #         print("FAISS logo index is not built or is empty.")
-    #         return []
-
-    #     query_embedding_np = np.array([query_embedding]).astype('float32')
-    #     # Normalize the query vector to match the index
-    #     faiss.normalize_L2(query_embedding_np)
-        
-    #     # Perform the search
-    #     distances, indices = self.logo_index.search(query_embedding_np, top_k)
-        
-    #     # The 'indices' are the database IDs we stored. Filter out -1 (no result).
-    #     found_ids = [int(i) for i in indices[0] if i != -1]
-    #     return found_ids
