@@ -1,11 +1,17 @@
+import math
+import fitz
 from flask import Flask, jsonify, render_template, request, redirect, url_for, flash, send_file, session
 from functools import wraps
+import psycopg2
 from werkzeug.security import generate_password_hash, check_password_hash
 import database as db # Import your database functions
 from ml_utils import MLModel
 import io
 from flask_mail import Mail, Message
 import secrets 
+import numpy as np
+import faiss
+from PIL import Image
 
 app = Flask(__name__)
 app.secret_key = 'a_secure_random_secret_key'
@@ -107,26 +113,233 @@ def register():
     return render_template('register.html') # You will need to create this HTML file
 # ===============================================================================================
 # FOR TEXT SEARCH
-
-@app.route('/api/text_search', methods=['POST'])
-def api_text_search():
-    """
-    Handles searches based only on words and class filters.
-    """
-    # Get search terms from the JSON body of the request
-    data = request.get_json()
-    words = data.get('words')
-    class_filter = data.get('class_filter')
-
-    # Use the existing database function without an id_list
-    results = db.search_trademarks(
-        words=words,
-        class_filter=class_filter
-    )
+# @app.route('/api/perform_comparison', methods=['POST'])
+# def perform_comparison():
+#     file = request.files.get('file')
+#     if not file: return jsonify({'error': 'No file'}), 400
     
-    results_list = [dict(row) for row in results]
-    return jsonify(results_list)
+#     compare_target = request.form.get('target', 'MYIPO')
+#     filename = file.filename.lower()
+    
+#     db_data = db.get_all_embeddings(category=compare_target)
+#     logo_index = faiss.IndexFlatL2(512)
+#     logo_index.add(np.vstack(db_data['logo']).astype('float32'))
 
+#     final_results = []
+#     conn = db.get_db_connection()
+#     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+#     try:
+#         if filename.endswith('.pdf'):
+#             doc = fitz.open(stream=file.read(), filetype="pdf")
+#             processed_xrefs = set() # <--- TRACK PROCESSED IMAGES
+            
+#             for page_num in range(len(doc)):
+#                 page = doc.load_page(page_num)
+#                 image_list = page.get_images(full=True)
+                
+#                 for img_info in image_list:
+#                     xref = img_info[0]
+                    
+#                     # IF WE ALREADY PROCESSED THIS IMAGE ID, SKIP IT
+#                     if xref in processed_xrefs:
+#                         continue
+#                     processed_xrefs.add(xref)
+
+#                     base_image = doc.extract_image(xref)
+#                     image_bytes = base_image["image"]
+#                     img_stream = io.BytesIO(image_bytes)
+                    
+#                     query_logo_emb = ml_model.generate_image_embedding(img_stream)
+#                     if query_logo_emb is None: continue
+
+#                     # Get only the top 1 match for this specific image to avoid clutter
+#                     distances, indices = logo_index.search(query_logo_emb.astype('float32').reshape(1, -1), 1)
+                    
+#                     idx = indices[0][0]
+#                     if idx == -1: continue
+                    
+#                     distance = distances[0][0]
+#                     sim_score = float(100 / (1 + math.exp(distance - 5.5)))
+
+#                     # High threshold for PDF journals (e.g. > 80%) helps reduce "noise"
+#                     if sim_score > 80.0:
+#                         tm_id = db_data['ids'][idx]
+                        
+#                         # PREVENT DUPLICATE CARDS: 
+#                         # Check if we already added this specific Trademark ID to results
+#                         if any(r['id'] == tm_id for r in final_results):
+#                             continue
+
+#                         cur.execute("SELECT applicant_name, serial_number, description FROM trademarks WHERE id = %s", (tm_id,))
+#                         tm = cur.fetchone()
+                        
+#                         final_results.append({
+#                             'id': tm_id,
+#                             'source': f"Page {page_num + 1}",
+#                             'label': tm['applicant_name'],
+#                             'imgSim': round(sim_score, 2),
+#                             'textSim': 0,
+#                             'modalTrademarkNum': tm['serial_number'],
+#                             'modalDescription': tm['description']
+#                         })
+#             doc.close()
+
+#         else:
+#             # --- SINGLE IMAGE LOGIC ---
+#             file.seek(0)
+#             query_logo_emb = ml_model.generate_image_embedding(file.stream)
+#             if query_logo_emb is not None:
+#                 distances, indices = logo_index.search(query_logo_emb.astype('float32').reshape(1, -1), 10)
+#                 for i, idx in enumerate(indices[0]):
+#                     if idx == -1: continue
+#                     distance = distances[0][i]
+#                     sim_score = float(100 / (1 + math.exp(distance - 5.5)))
+                    
+#                     # LOWERED THRESHOLD TO 0.0 TO SEE ALL 10 CARDS
+#                     if sim_score >= 0.0:
+#                         tm_id = db_data['ids'][idx]
+#                         cur.execute("SELECT applicant_name, serial_number, description FROM trademarks WHERE id = %s", (tm_id,))
+#                         tm = cur.fetchone()
+#                         final_results.append({
+#                             'id': tm_id,
+#                             'source': "Uploaded Image",
+#                             'label': tm['applicant_name'],
+#                             'imgSim': round(sim_score, 2),
+#                             'textSim': 0,
+#                             'modalTrademarkNum': tm['serial_number'],
+#                             'modalDescription': tm['description']
+#                         })
+
+#     except Exception as e:
+#         print(f"Error: {e}")
+#         return jsonify({'error': str(e)}), 500
+#     finally:
+#         cur.close()
+#         conn.close()
+
+#     return jsonify(final_results)
+
+@app.route('/api/perform_comparison', methods=['POST'])
+def perform_comparison():
+    file = request.files.get('file')
+    if not file: return jsonify({'error': 'No file'}), 400
+    
+    compare_target = request.form.get('target', 'MYIPO')
+    filename = file.filename.lower()
+    
+    # 1. Load FAISS Index once
+    db_data = db.get_all_embeddings(category=compare_target)
+    if not db_data['ids']: return jsonify({'error': 'Dataset empty'}), 400
+
+    logo_index = faiss.IndexFlatL2(512)
+    logo_index.add(np.vstack(db_data['logo']).astype('float32'))
+
+    final_results = []
+    conn = db.get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    # Helper function to get Top 3 matches for a specific result
+    def get_top_matches(indices_list, distances_list, start_index):
+        matches = []
+        for j in range(start_index + 1, min(start_index + 4, len(indices_list))):
+            m_idx = indices_list[j]
+            if m_idx == -1: continue
+            m_db_id = db_data['ids'][m_idx]
+            cur.execute("SELECT id, applicant_name, serial_number FROM trademarks WHERE id = %s", (m_db_id,))
+            m_tm = cur.fetchone()
+            m_sim = float(100 / (1 + math.exp(distances_list[j] - 5.5)))
+            matches.append({
+                'id': m_tm['id'], 'label': m_tm['applicant_name'], 
+                'serial': m_tm['serial_number'], 'sim': f"{m_sim:.2f}%"
+            })
+        return matches
+
+    try:
+        if filename.endswith('.pdf'):
+            # --- PDF HANDLING ---
+            doc = fitz.open(stream=file.read(), filetype="pdf")
+            processed_xrefs = set()
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                for img_info in page.get_images(full=True):
+                    xref = img_info[0]
+                    if xref in processed_xrefs: continue
+                    processed_xrefs.add(xref)
+
+                    base_image = doc.extract_image(xref)
+                    img_stream = io.BytesIO(base_image["image"])
+                    query_logo_emb = ml_model.generate_image_embedding(img_stream)
+                    if query_logo_emb is None: continue
+
+                    distances, indices = logo_index.search(query_logo_emb.astype('float32').reshape(1, -1), 4)
+                    idx = indices[0][0]
+                    if idx == -1: continue
+                    
+                    sim_score = float(100 / (1 + math.exp(distances[0][0] - 5.5)))
+                    if sim_score > 80.0:
+                        tm_id = db_data['ids'][idx]
+                        if any(r['id'] == tm_id for r in final_results): continue
+
+                        cur.execute("SELECT applicant_name, serial_number, description, class_indices, agent_details FROM trademarks WHERE id = %s", (tm_id,))
+                        tm = cur.fetchone()
+                        
+                        final_results.append({
+                            'id': tm_id,
+                            'source': f"Page {page_num + 1}",
+                            'label': tm['applicant_name'],
+                            'imgSim': round(sim_score, 2),
+                            'textSim': 0,
+                            'modalTrademarkNum': tm['serial_number'],
+                            'modalClass': tm['class_indices'],
+                            'modalAgent': tm['agent_details'],
+                            'modalDescription': tm['description'],
+                            'matches': get_top_matches(indices[0], distances[0], 0)
+                        })
+            doc.close()
+
+        else:
+            # --- IMAGE HANDLING (RESTORED & FIXED) ---
+            file.seek(0)
+            # Use the exact method that worked for you before
+            query_logo_emb = ml_model.generate_image_embedding(file.stream)
+            
+            if query_logo_emb is not None:
+                # Search for Top 10 to provide variety in cards
+                distances, indices = logo_index.search(query_logo_emb.astype('float32').reshape(1, -1), 10)
+                
+                for i in range(len(indices[0])):
+                    idx = indices[0][i]
+                    if idx == -1: continue
+                    
+                    sim_score = float(100 / (1 + math.exp(distances[0][i] - 5.5)))
+                    
+                    # Show all matches for single images
+                    tm_id = db_data['ids'][idx]
+                    cur.execute("SELECT applicant_name, serial_number, description, class_indices, agent_details FROM trademarks WHERE id = %s", (tm_id,))
+                    tm = cur.fetchone()
+
+                    final_results.append({
+                        'id': tm_id,
+                        'source': "Uploaded Image",
+                        'label': tm['applicant_name'],
+                        'imgSim': round(sim_score, 2),
+                        'textSim': 0,
+                        'modalTrademarkNum': tm['serial_number'],
+                        'modalClass': tm['class_indices'],
+                        'modalAgent': tm['agent_details'],
+                        'modalDescription': tm['description'],
+                        'matches': get_top_matches(indices[0], distances[0], i)
+                    })
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+    return jsonify(final_results)
 # ===============================================================================================
 # FOR VISUAL SEARCH REGISTRATION
 

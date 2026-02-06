@@ -1,4 +1,4 @@
-# ml_utils.py (Image-Only Version)
+# ml_utils.py (Image-Only Version) NOTED! This is for Searching, NOT COMPARING
 import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer

@@ -162,38 +162,68 @@ def get_logo(trademark_id):
 
 # In database.py
 
-def get_all_embeddings():
-    """Fetches all embeddings and IDs to build the FAISS index."""
+# def get_all_embeddings():
+#     """Fetches all embeddings and IDs to build the FAISS index."""
+#     conn = get_db_connection()
+#     cur = conn.cursor()
+#     cur.execute("SELECT id, text_embedding, logo_embedding FROM trademarks")
+#     rows = cur.fetchall()
+#     cur.close()
+#     conn.close()
+
+#     db_data = {'text': [], 'logo': [], 'ids': []}
+#     logo_dim = 512 # Assuming CLIP model dimension
+
+#     for row in rows:
+#         db_id, text_emb_bytes, logo_emb_bytes = row
+#         db_data['ids'].append(db_id)
+        
+#         # This part is fine
+#         if text_emb_bytes:
+#             text_emb = np.frombuffer(text_emb_bytes, dtype=np.float32)
+#             db_data['text'].append(text_emb)
+        
+#         # --- THIS IS THE FIX ---
+#         # Convert to NumPy array here, and handle the None case explicitly.
+#         if logo_emb_bytes:
+#             logo_emb = np.frombuffer(logo_emb_bytes, dtype=np.float32)
+#             db_data['logo'].append(logo_emb)
+#         else:
+#             # If no embedding exists, append an array of zeros.
+#             db_data['logo'].append(np.zeros(logo_dim, dtype=np.float32))
+#     return db_data
+
+def get_all_embeddings(category=None): # Added category parameter
+    """Fetches embeddings and IDs, optionally filtered by category."""
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, text_embedding, logo_embedding FROM trademarks")
+    
+    # NEW: Filter logic
+    if category:
+        cur.execute("SELECT id, text_embedding, logo_embedding FROM trademarks WHERE category = %s", (category,))
+    else:
+        cur.execute("SELECT id, text_embedding, logo_embedding FROM trademarks")
+        
     rows = cur.fetchall()
     cur.close()
     conn.close()
 
     db_data = {'text': [], 'logo': [], 'ids': []}
-    logo_dim = 512 # Assuming CLIP model dimension
+    logo_dim = 512 
 
     for row in rows:
         db_id, text_emb_bytes, logo_emb_bytes = row
         db_data['ids'].append(db_id)
         
-        # This part is fine
         if text_emb_bytes:
-            text_emb = np.frombuffer(text_emb_bytes, dtype=np.float32)
-            db_data['text'].append(text_emb)
+            db_data['text'].append(np.frombuffer(text_emb_bytes, dtype=np.float32))
         
-        # --- THIS IS THE FIX ---
-        # Convert to NumPy array here, and handle the None case explicitly.
         if logo_emb_bytes:
-            logo_emb = np.frombuffer(logo_emb_bytes, dtype=np.float32)
-            db_data['logo'].append(logo_emb)
+            db_data['logo'].append(np.frombuffer(logo_emb_bytes, dtype=np.float32))
         else:
-            # If no embedding exists, append an array of zeros.
             db_data['logo'].append(np.zeros(logo_dim, dtype=np.float32))
+            
     return db_data
-
-
 
 # ==============================================================================
 # SEARCH FUNCTIONS 
