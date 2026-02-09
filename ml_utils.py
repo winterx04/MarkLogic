@@ -5,58 +5,111 @@ from sentence_transformers import SentenceTransformer
 from PIL import Image
 import database as db
 
+# class MLModel:
+#     def __init__(self, model_name='clip-ViT-B-32'):
+#         print("Loading Image ML model...")
+#         self.model = SentenceTransformer(model_name)
+#         self.logo_index = None
+#         self.id_map = [] # Maps FAISS index position to database ID
+#         print("Image ML model loaded successfully.")
+
+#     def generate_image_embedding(self, image_file_stream):
+#         """Converts an image file stream into a vector embedding."""
+#         try:
+#             image = Image.open(image_file_stream).convert("RGB")
+#             embedding = self.model.encode([image], convert_to_numpy=True, show_progress_bar=False)
+#             return embedding[0]
+#         except Exception as e:
+#             print(f"Error processing image for embedding: {e}")
+#             return None
+
+#     def build_logo_index(self):
+#         """Fetches all logo embeddings from the DB and builds a FAISS index."""
+#         print("Building FAISS logo index from database...")
+#         db_data = db.get_all_embeddings()
+
+#         # Filter for entries that have a valid logo embedding
+#         valid_logo_entries = []
+#         temp_id_map = []
+#         for db_id, logo_emb_array in zip(db_data['ids'], db_data['logo']):
+#             if logo_emb_array.any(): # Check if the array is not all zeros
+#                 valid_logo_entries.append(logo_emb_array)
+#                 temp_id_map.append(db_id)
+
+#         if not valid_logo_entries:
+#             print("No logo embeddings found in the database to index.")
+#             return
+
+#         self.id_map = temp_id_map
+#         logo_embeddings_np = np.vstack(valid_logo_entries).astype('float32')
+
+#         # --- Use Cosine Similarity for better results ---
+#         # 1. Normalize the vectors
+#         faiss.normalize_L2(logo_embeddings_np)
+#         dimension = logo_embeddings_np.shape[1]
+        
+#         # 2. Use IndexFlatIP (Inner Product), which is equivalent to Cosine Similarity
+#         # We use IndexIDMap to store our actual database IDs
+#         cpu_index = faiss.IndexFlatIP(dimension)
+#         self.logo_index = faiss.IndexIDMap(cpu_index)
+        
+#         # Add vectors to the index with their corresponding database IDs
+#         self.logo_index.add_with_ids(logo_embeddings_np, np.array(self.id_map).astype('int64'))
+#         print(f"FAISS logo index built successfully with {self.logo_index.ntotal} vectors.")
+
+
 class MLModel:
-    def __init__(self, model_name='clip-ViT-B-32'):
-        print("Loading Image ML model...")
-        self.model = SentenceTransformer(model_name)
+    def __init__(self, image_model_name='clip-ViT-B-32', text_model_name='all-MiniLM-L6-v2'):
+        print("Loading ML models...")
+        # CLIP for images (512 dimensions)
+        self.image_model = SentenceTransformer(image_model_name)
+        # MiniLM for text (384 dimensions)
+        self.text_model = SentenceTransformer(text_model_name)
+        
         self.logo_index = None
-        self.id_map = [] # Maps FAISS index position to database ID
-        print("Image ML model loaded successfully.")
+        self.id_map = [] 
+        print("ML models loaded successfully.")
 
     def generate_image_embedding(self, image_file_stream):
-        """Converts an image file stream into a vector embedding."""
+        """Converts image to vector (512-dim)."""
         try:
             image = Image.open(image_file_stream).convert("RGB")
-            embedding = self.model.encode([image], convert_to_numpy=True, show_progress_bar=False)
+            embedding = self.image_model.encode([image], convert_to_numpy=True, show_progress_bar=False)
             return embedding[0]
         except Exception as e:
-            print(f"Error processing image for embedding: {e}")
+            print(f"Error processing image: {e}")
             return None
 
-    def build_logo_index(self):
-        """Fetches all logo embeddings from the DB and builds a FAISS index."""
-        print("Building FAISS logo index from database...")
-        db_data = db.get_all_embeddings()
+    def generate_text_embedding(self, text):
+        """Converts trademark description/name to vector (384-dim)."""
+        if not text:
+            return np.zeros(384, dtype=np.float32)
+        embedding = self.text_model.encode(text, convert_to_numpy=True)
+        return embedding
 
-        # Filter for entries that have a valid logo embedding
+    def build_logo_index(self):
+        """Builds the FAISS index for visual search."""
+        print("Building FAISS logo index...")
+        db_data = db.get_all_embeddings() # Make sure this returns logo embeddings
+
         valid_logo_entries = []
         temp_id_map = []
         for db_id, logo_emb_array in zip(db_data['ids'], db_data['logo']):
-            if logo_emb_array.any(): # Check if the array is not all zeros
+            if logo_emb_array is not None and logo_emb_array.any():
                 valid_logo_entries.append(logo_emb_array)
                 temp_id_map.append(db_id)
 
         if not valid_logo_entries:
-            print("No logo embeddings found in the database to index.")
             return
 
         self.id_map = temp_id_map
         logo_embeddings_np = np.vstack(valid_logo_entries).astype('float32')
-
-        # --- Use Cosine Similarity for better results ---
-        # 1. Normalize the vectors
         faiss.normalize_L2(logo_embeddings_np)
-        dimension = logo_embeddings_np.shape[1]
         
-        # 2. Use IndexFlatIP (Inner Product), which is equivalent to Cosine Similarity
-        # We use IndexIDMap to store our actual database IDs
-        cpu_index = faiss.IndexFlatIP(dimension)
+        cpu_index = faiss.IndexFlatIP(logo_embeddings_np.shape[1])
         self.logo_index = faiss.IndexIDMap(cpu_index)
-        
-        # Add vectors to the index with their corresponding database IDs
         self.logo_index.add_with_ids(logo_embeddings_np, np.array(self.id_map).astype('int64'))
-        print(f"FAISS logo index built successfully with {self.logo_index.ntotal} vectors.")
-
+        print(f"Index built with {self.logo_index.ntotal} logos.")
 
     def search_logo_index(self, query_embedding, return_distances=False):
         """

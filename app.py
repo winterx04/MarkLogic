@@ -12,6 +12,7 @@ import secrets
 import numpy as np
 import faiss
 from PIL import Image
+from pdf_extractor import extract_trademarks_from_pdf
 
 app = Flask(__name__)
 app.secret_key = 'a_secure_random_secret_key'
@@ -653,6 +654,83 @@ def logout():
     session.clear() # Clear all session data
     flash('You have been successfully logged out.', 'info')
     return redirect(url_for('signin'))
+
+
+# --- 8/2/2026 --- 
+@app.route('/admin/upload-journal', methods=['POST'])
+@admin_required
+def upload_journal():
+    file = request.files.get('file')
+    category = request.form.get('category', 'MYIPO')
+    
+    if not file:
+        flash("No file uploaded", "danger")
+        return redirect(url_for('admin_page'))
+
+    # 1. Extract raw data and logo bytes from PDF
+    extracted_data = extract_trademarks_from_pdf(file.read())
+    
+    count = 0
+    for tm in extracted_data:
+        # 2. Generate embeddings using your existing ml_model
+        # (Assuming you add generate_text_embedding to your ml_utils.py)
+        text_content = f"{tm['applicant_name']} {tm['description']}"
+        tm['text_embedding'] = ml_model.generate_text_embedding(text_content)
+        
+        logo_stream = io.BytesIO(tm['logo_data'])
+        tm['logo_embedding'] = ml_model.generate_image_embedding(logo_stream)
+        
+        # 3. Save to PostgreSQL
+        # Map tm keys to your database.py insert_trademark(data)
+        db.insert_trademark({
+            'serial_number': tm['serial_number'],
+            'class_indices': tm['class_indices'],
+            'date': tm['registration_date'],
+            'description': tm['description'],
+            'applicant': tm['applicant_name'],
+            'agent': tm['agent_details'],
+            'logo_data': tm['logo_data'],
+            'text_embedding': tm['text_embedding'],
+            'logo_embedding': tm['logo_embedding']
+        })
+        count += 1
+    
+    # Rebuild FAISS index after new data is added
+    ml_model.build_logo_index() 
+    
+    flash(f"Successfully processed {count} trademarks from journal.", "success")
+    return redirect(url_for('admin_page'))
+
+@app.route('/admin/process-journal', methods=['POST'])
+@admin_required
+def process_journal():
+    file = request.files.get('file')
+    if not file: return "No file", 400
+
+    # 1. Extract all trademark blocks from the PDF
+    # This uses the logic from your previous project's pdf_extractor.py
+    extracted_trademarks = extract_trademarks_from_pdf(file.stream) 
+
+    for tm in extracted_trademarks:
+        # 2. Generate Text Embedding
+        text_to_embed = f"{tm['applicant_name']} {tm['description']}"
+        tm['text_embedding'] = ml_model.generate_text_embedding(text_to_embed)
+
+        # 3. Generate Logo Embedding
+        if tm.get('logo_data'):
+            logo_stream = io.BytesIO(tm['logo_data'])
+            tm['logo_embedding'] = ml_model.generate_image_embedding(logo_stream)
+        else:
+            tm['logo_embedding'] = None
+
+        # 4. Save to Postgres
+        db.insert_trademark(tm)
+
+    # 5. Refresh the FAISS index in memory so the new logos are searchable immediately
+    ml_model.build_logo_index()
+
+    flash(f"Processed {len(extracted_trademarks)} trademarks successfully!", "success")
+    return redirect(url_for('admin_page'))
 
 # --- Main entry point ---
 if __name__ == '__main__':

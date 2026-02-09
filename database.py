@@ -70,37 +70,42 @@ def get_user_by_email(email):
 
 
 # ==============================================================================
-# TRADEMARK MANAGEMENT FUNCTIONS 
+# TRADEMARK MANAGEMENT FUNCTIONS  8/2/2026
 # ==============================================================================
 
 def insert_trademark(data):
-    """Inserts a single trademark record, including binary logo data, into the database."""
     conn = get_db_connection()
     cur = conn.cursor()
     
-    text_embedding_bytes = data['text_embedding'].tobytes()
-    logo_embedding_bytes = data['logo_embedding'].tobytes() if 'logo_embedding' in data and data['logo_embedding'] is not None else None
-    logo_data_bytes = data.get('logo_data')
+    # Ensure embeddings are converted to bytes for PostgreSQL BYTEA column
+    text_emb_bytes = data['text_embedding'].tobytes() if data.get('text_embedding') is not None else None
+    logo_emb_bytes = data['logo_embedding'].tobytes() if data.get('logo_embedding') is not None else None
 
     try:
         cur.execute("""
-            INSERT INTO trademarks (serial_number, class_indices, registration_date, description, applicant_name, agent_details, logo_data, text_embedding, logo_embedding)
+            INSERT INTO trademarks (
+                serial_number, class_indices, registration_date, 
+                description, applicant_name, agent_details, 
+                logo_data, text_embedding, logo_embedding
+            )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (serial_number) DO NOTHING;
+            ON CONFLICT (serial_number) DO UPDATE SET
+                description = EXCLUDED.description,
+                logo_data = EXCLUDED.logo_data;
         """, (
             data.get('serial_number'),
             data.get('class_indices'),
-            data.get('date'),
+            data.get('registration_date'),
             data.get('description'),
-            data.get('applicant'),
-            data.get('agent'),
-            logo_data_bytes,
-            text_embedding_bytes,
-            logo_embedding_bytes
+            data.get('applicant_name'),
+            data.get('agent_details'),
+            data.get('logo_data'), # Raw bytes of the image
+            text_emb_bytes,
+            logo_emb_bytes
         ))
         conn.commit()
     except Exception as e:
-        print(f"Error inserting trademark {data.get('serial_number')}: {e}")
+        print(f"DB Error: {e}")
         conn.rollback()
     finally:
         cur.close()

@@ -1,0 +1,7 @@
+8/2/2026:
+- Add 'category' column where MYIPO as default else Client
+- Added pdf_extractor.py
+- At database.py, modified insert_trademark FUNCTION  
+- Modified ml_utils.py
+- App.py added 2 new route for admin regarding adding dataset
+    o Need to redo route again as it dataset.html differs to MYIPO & Client
