@@ -5,3 +5,9 @@
 - Modified ml_utils.py
 - App.py added 2 new route for admin regarding adding dataset
     o Need to redo route again as it dataset.html differs to MYIPO & Client
+
+
+10/2/2026:
+- In dataset, Client only upload images while MYIPO is Journal (PDF)
+- Create a print function to show how similarity is calculated in Console
+- Comparison with something similar
