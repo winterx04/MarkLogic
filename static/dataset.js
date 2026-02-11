@@ -166,18 +166,55 @@ uploadBtn.addEventListener("click", () => {
   const batchNumber = document.getElementById("batchNumber").value.trim();
   const year = document.getElementById("yearInput").value.trim();
 
+  // 1. Your original validation
   if (!validateBatchAndYear(batchNumber, year)) return;
   if (selectedFiles.length === 0) {
     showPopup("Please select a file before uploading.", true);
     return;
   }
 
-  showPopup("✅ File uploaded successfully!");
-  selectedFiles = [];
-  renderFileList();
-  updateUploadButton();
-  document.getElementById("batchNumber").value = "";
-  document.getElementById("yearInput").value = "";
+  // 2. Prepare the Data
+  const formData = new FormData();
+  // selectedFiles[0] assumes you are uploading one PDF at a time
+  formData.append('file', selectedFiles[0]); 
+  formData.append('batch_number', batchNumber);
+  formData.append('batch_year', year);
+
+  // 3. UI State: Change button to "Processing..." 
+  // Extraction takes time because of the AI models
+  const originalBtnText = uploadBtn.innerText;
+  uploadBtn.innerText = "⏳ Processing AI Models...";
+  uploadBtn.disabled = true;
+
+  // 4. Send to Flask
+  fetch('/upload-journal/MYIPO', { // Ensure this matches the route in app.py
+    method: 'POST',
+    body: formData
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      showPopup(`✅ ${data.message}`);
+      
+      // 5. Reset UI only on success
+      selectedFiles = [];
+      renderFileList();
+      updateUploadButton();
+      document.getElementById("batchNumber").value = "";
+      document.getElementById("yearInput").value = "";
+    } else {
+      showPopup(`❌ Error: ${data.message}`, true);
+    }
+  })
+  .catch(error => {
+    console.error('Upload Error:', error);
+    showPopup("❌ A server error occurred. Check the console.", true);
+  })
+  .finally(() => {
+    // Restore button state
+    uploadBtn.innerText = originalBtnText;
+    uploadBtn.disabled = false;
+  });
 });
 
 // =============================
