@@ -40,6 +40,8 @@ def init_db():
             evidence_snapshot BYTEA,
             text_embedding BYTEA,
             logo_embedding BYTEA,
+            batch_number VARCHAR(10),
+            batch_year VARCHAR(10),
             category VARCHAR(50) DEFAULT 'MYIPO',
             is_split BOOLEAN DEFAULT FALSE,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -215,14 +217,27 @@ def insert_trademark(data):
     finally:
         cur.close(); conn.close()
 
+# def get_all_trademarks():
+#     """Fetches all trademarks for display in dataset.html."""
+#     conn = get_db_connection()
+#     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+#     cur.execute("""
+#         SELECT id, serial_number, trademark_name, class_indices, applicant_name, category, is_split,
+#                (logo_data IS NOT NULL) as has_logo
+#         FROM trademarks ORDER BY id DESC
+#     """)
+#     trademarks = cur.fetchall()
+#     cur.close(); conn.close()
+#     return trademarks
 def get_all_trademarks():
-    """Fetches all trademarks for display in dataset.html."""
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cur.execute("""
         SELECT id, serial_number, trademark_name, class_indices, applicant_name, category, is_split,
-               (logo_data IS NOT NULL) as has_logo
-        FROM trademarks ORDER BY id DESC
+               (logo_data IS NOT NULL) as has_logo,
+               batch_number, batch_year
+        FROM trademarks
+        ORDER BY id DESC
     """)
     trademarks = cur.fetchall()
     cur.close(); conn.close()
@@ -268,6 +283,18 @@ def get_all_embeddings(category=None):
             db_data['logo'].append(np.zeros(512, dtype=np.float32))
     return db_data
 
+def delete_trademark_by_id(trademark_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM trademarks WHERE id = %s", (trademark_id,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
 # ==============================================================================
 # SEARCH FUNCTIONS (PRESERVED & ENHANCED)
 # ==============================================================================

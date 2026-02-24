@@ -8,7 +8,9 @@ cur = conn.cursor()
 if not os.path.exists('inspect_logos'):
     os.makedirs('inspect_logos')
 
+# cur.execute("SELECT id, serial_number, logo_data FROM trademarks WHERE logo_data IS NOT NULL LIMIT 50")
 cur.execute("SELECT id, serial_number, logo_data FROM trademarks WHERE logo_data IS NOT NULL LIMIT 50")
+
 rows = cur.fetchall()
 
 print(f"Exporting {len(rows)} logos for inspection...")

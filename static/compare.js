@@ -5,6 +5,9 @@ const clientDatasetRightCheckbox = document.getElementById("clientDatasetRightCh
 const compareBtn = document.getElementById("compareBtn");
 const uploadItem = document.getElementById("uploadItem");
 const fileInputUpload = document.getElementById("fileInputUpload");
+const resultsGrid = document.querySelector(".results-grid");
+const detailModal = document.getElementById("detailModal");
+const modalClose = document.getElementById("modalClose");
 
 function updateButtonState() {
   const leftSelected = uploadCheckbox.checked || clientDatasetCheckbox.checked;
@@ -275,88 +278,118 @@ function getFileIcon(ext) {
 //   }
 // });
 
+function renderResultCard(result) {
+  const card = document.createElement("div");
+  card.className = "result-card";
+
+  const imgClass = result.imgSim > 50 ? "high" : "low";
+  const textClass = result.textSim > 50 ? "high" : "low";
+
+  card.innerHTML = `
+    <div class="card-top">
+      <div class="card-icon">
+        <img src="/logo/${result.id}" alt="Trademark Logo">
+      </div>
+      <div class="card-label">${result.label}</div>
+      <div class="card-similarities">
+        <div class="similarity-item">
+          <span class="similarity-label">Image Similarity</span>
+          <span class="similarity-percentage ${imgClass}">${result.imgSim}%</span>
+        </div>
+        <div class="similarity-item">
+          <span class="similarity-label">Text Similarity</span>
+          <span class="similarity-percentage ${textClass}">${result.textSim}%</span>
+        </div>
+      </div>
+    </div>
+  `;
+    // // Map the backend keys to what the Modal expects
+    // card.addEventListener("click", () => openDetailModal({
+    //     id: result.id,
+    //     label: result.label,
+    //     imgSim: result.imgSim,
+    //     textSim: result.textSim,
+    //     modalTrademarkNum: result.serial,
+    //     modalDescription: result.description || "No description provided."
+    // }));
+  card.addEventListener("click", () => openDetailModal({
+      id: result.id,
+      label: result.label,
+      imgSim: result.imgSim,
+      textSim: result.textSim,
+      modalTrademarkNum: result.serial,
+      modalDescription: result.description, // Passed from Python match_list
+      modalClass: result.modalClass,         // Passed from Python match_list
+      modalAgent: result.modalAgent           // Passed from Python match_list
+  }));
+    resultsGrid.appendChild(card);
+}
+
 compareBtn.addEventListener("click", async () => {
-  const left = uploadCheckbox.checked ? "Upload File" : "Client Dataset";
-  const right = miyoCheckbox.checked ? "MYIPO Journals" : "Client Dataset";
-  const targetType = miyoCheckbox.checked ? "MYIPO" : "CLIENT";
+    const left = uploadCheckbox.checked ? "Upload File" : "Client Dataset";
+    const right = miyoCheckbox.checked ? "MYIPO Journals" : "Client Dataset";
+    const targetType = miyoCheckbox.checked ? "MYIPO" : "CLIENT";
 
-  // Check if a file is actually uploaded when "Upload File" is selected
-  if (uploadCheckbox.checked && fileInputUpload.files.length === 0) {
-    showPopup("Please upload a file first!", true);
-    return;
-  }
+    if (uploadCheckbox.checked && fileInputUpload.files.length === 0) {
+        showPopup("Please upload a file first!", true);
+        return;
+    }
 
-  showPopup(`Comparing ${left} with ${right}...`);
+    const comparisonInfo = document.getElementById("comparisonInfo");
+    const loadingSection = document.getElementById("loadingSection");
+    const resultsSection = document.getElementById("resultsSection");
+    const progressFill = document.querySelector(".progress-fill");
 
-  const comparisonInfo = document.getElementById("comparisonInfo");
-  const loadingSection = document.getElementById("loadingSection");
-  const resultsSection = document.getElementById("resultsSection");
-  const progressFill = document.querySelector(".progress-fill");
-  const resultsGrid = document.querySelector(".results-grid");
+    // Reset UI
+    resultsSection.classList.remove("show");
+    loadingSection.classList.add("show");
+    progressFill.style.width = "0%";
+    resultsGrid.innerHTML = ""; // Clear old results
+    comparisonInfo.textContent = `Comparing ${left} with ${right}`;
+    loadingSection.scrollIntoView({ behavior: "smooth", block: "start" });
 
-  // Reset UI
-  resultsSection.classList.remove("show");
-  loadingSection.classList.add("show");
-  progressFill.style.width = "0%";
-  resultsGrid.innerHTML = "";
-  comparisonInfo.textContent = `Comparing ${left} with ${right}`;
-  loadingSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    const formData = new FormData();
+    formData.append('file', fileInputUpload.files[0]);
+    formData.append('target', targetType);
 
-  // Prepare data for server
-  const formData = new FormData();
-  formData.append('file', fileInputUpload.files[0]);
-  formData.append('target', targetType); // This matches request.form.get('target')
-
-  try {
-    // 1. Send to Backend
+      try {
     const response = await fetch('/api/perform_comparison', {
         method: 'POST',
         body: formData
     });
     
     const newResults = await response.json();
-
     if (newResults.error) throw new Error(newResults.error);
 
-    // 2. Animate progress bar while we have the data
     let progress = 0;
     const interval = setInterval(() => {
-      progress += 5;
+      progress += 10;
       progressFill.style.width = progress + "%";
       if (progress >= 100) {
         clearInterval(interval);
-        
-        // 3. Render real results
         loadingSection.classList.remove("show");
-        
-        newResults.forEach(result => {
-          const card = document.createElement("div");
-          card.className = "result-card";
-          
-          const imgClass = result.imgSim > 50 ? "high" : "low";
-          const textClass = result.textSim > 50 ? "high" : "low";
-          
-          card.innerHTML = `
-            <div class="card-top">
-              <!-- USE YOUR /logo/ID ROUTE HERE -->
-              <div class="card-icon"><img src="/logo/${result.id}" alt="Icon"></div>
-              <div class="card-label">${result.label}</div>
-              <div class="card-similarities">
-                <div class="similarity-item">
-                  <span class="similarity-label">Image Similarity</span>
-                  <span class="similarity-percentage ${imgClass}">${result.imgSim}%</span>
-                </div>
-                <div class="similarity-item">
-                  <span class="similarity-label">Text Similarity</span>
-                  <span class="similarity-percentage ${textClass}">${result.textSim}%</span>
-                </div>
-              </div>
-            </div>
-          `;
 
-          card.addEventListener("click", () => openDetailModal(result));
-          resultsGrid.appendChild(card);
-        });
+        if (Array.isArray(newResults) && newResults.length > 0) {
+
+          // CASE 1: PDF comparison (nested results)
+          if (newResults[0].matches) {
+            newResults.forEach(pdfResult => {
+              // --- REMOVED THE HEADER BLOCK FROM HERE ---
+              pdfResult.matches.forEach(match => {
+                renderResultCard(match);
+              });
+            });
+
+          // CASE 2: Image comparison (flat results)
+          } else {
+            newResults.forEach(result => {
+              renderResultCard(result);
+            });
+          }
+
+        } else {
+          resultsGrid.innerHTML = "<p style='color:white;'>No results found.</p>";
+        }
 
         resultsSection.classList.add("show");
         resultsSection.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -386,44 +419,58 @@ updateVisualState();
 updateButtonState();
 
 // ===== DETAIL MODAL FUNCTIONALITY =====
-const detailModal = document.getElementById("detailModal");
-const modalClose = document.getElementById("modalClose");
+// const detailModal = document.getElementById("detailModal");
+// const modalClose = document.getElementById("modalClose");
 
+// function openDetailModal(data) {
+//   // 1. Update standard modal fields
+//   document.getElementById("modalImage").src = `/logo/${data.id}`;
+//   document.getElementById("modalCompanyName").textContent = data.label;
+//   document.getElementById("modalImageSim").textContent = `${data.imgSim}%`;
+//   document.getElementById("modalTextSim").textContent = `${data.textSim}%`;
+//   document.getElementById("modalTrademarkNum").textContent = data.modalTrademarkNum;
+//   // Ensure your modal has this ID for class if you use it, or adjust as needed
+//   if(document.getElementById("modalClass")) document.getElementById("modalClass").textContent = data.modalClass || "N/A"; 
+//   document.getElementById("modalDescription").textContent = data.modalDescription;
+
+//   // 2. Clear and rebuild the Top 3 Matches list
+//   const matchesList = document.getElementById("modalMatchesList");
+//   matchesList.innerHTML = ""; // This removes the hardcoded Loreal items
+
+//   if (data.matches && data.matches.length > 0) {
+//     data.matches.forEach(match => {
+//       const matchHtml = `
+//         <div class="match-item">
+//           <div class="match-left">
+//             <div class="match-badge">Similarity: ${match.sim}</div>
+//             <div class="match-title">${match.label}</div>
+//             <div class="match-meta">Serial: ${match.serial}</div>
+//             <div class="match-desc">Visually similar entry found in database.</div>
+//           </div>
+//           <div class="match-image">
+//             <img src="/logo/${match.id}" alt="Match Logo">
+//           </div>
+//         </div>
+//       `;
+//       matchesList.insertAdjacentHTML('beforeend', matchHtml);
+//     });
+//   } else {
+//     matchesList.innerHTML = "<p style='color: #ccc; padding: 10px;'>No other close matches found.</p>";
+//   }
+
+//   detailModal.classList.add("show");
+// }
 function openDetailModal(data) {
-  // 1. Update standard modal fields
   document.getElementById("modalImage").src = `/logo/${data.id}`;
   document.getElementById("modalCompanyName").textContent = data.label;
   document.getElementById("modalImageSim").textContent = `${data.imgSim}%`;
   document.getElementById("modalTextSim").textContent = `${data.textSim}%`;
   document.getElementById("modalTrademarkNum").textContent = data.modalTrademarkNum;
-  // Ensure your modal has this ID for class if you use it, or adjust as needed
-  if(document.getElementById("modalClass")) document.getElementById("modalClass").textContent = data.modalClass || "N/A"; 
   document.getElementById("modalDescription").textContent = data.modalDescription;
-
-  // 2. Clear and rebuild the Top 3 Matches list
+  
+  // Clear the placeholder matches list
   const matchesList = document.getElementById("modalMatchesList");
-  matchesList.innerHTML = ""; // This removes the hardcoded Loreal items
-
-  if (data.matches && data.matches.length > 0) {
-    data.matches.forEach(match => {
-      const matchHtml = `
-        <div class="match-item">
-          <div class="match-left">
-            <div class="match-badge">Similarity: ${match.sim}</div>
-            <div class="match-title">${match.label}</div>
-            <div class="match-meta">Serial: ${match.serial}</div>
-            <div class="match-desc">Visually similar entry found in database.</div>
-          </div>
-          <div class="match-image">
-            <img src="/logo/${match.id}" alt="Match Logo">
-          </div>
-        </div>
-      `;
-      matchesList.insertAdjacentHTML('beforeend', matchHtml);
-    });
-  } else {
-    matchesList.innerHTML = "<p style='color: #ccc; padding: 10px;'>No other close matches found.</p>";
-  }
+  if(matchesList) matchesList.innerHTML = "<p style='color:#ccc'>Individual record view</p>";
 
   detailModal.classList.add("show");
 }
@@ -432,13 +479,8 @@ function closeDetailModal() {
   detailModal.classList.remove("show");
 }
 
-// Close button
 modalClose.addEventListener("click", closeDetailModal);
-
-// Close when clicking outside modal content
-detailModal.addEventListener("click", (e) => {
-  if (e.target === detailModal) closeDetailModal();
-});
+detailModal.addEventListener("click", (e) => { if (e.target === detailModal) closeDetailModal(); });
 
 document.getElementById("modalDownload").addEventListener("click", () => {
   showPopup("📄 Downloading report...");
@@ -454,3 +496,5 @@ document.querySelectorAll('.match-badge').forEach(badge => {
     badge.classList.remove('high'); // light grey
   }
 });
+
+console.log("Comparison Results:", newResults);
