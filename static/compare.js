@@ -326,80 +326,60 @@ function renderResultCard(result) {
 }
 
 compareBtn.addEventListener("click", async () => {
-    const left = uploadCheckbox.checked ? "Upload File" : "Client Dataset";
-    const right = miyoCheckbox.checked ? "MYIPO Journals" : "Client Dataset";
-    const targetType = miyoCheckbox.checked ? "MYIPO" : "CLIENT";
+    // 1. Detect Source (Left Side)
+    const isClientSource = clientDatasetCheckbox.checked;
+    const sourceCategory = isClientSource ? "CLIENT" : "UPLOAD";
 
-    if (uploadCheckbox.checked && fileInputUpload.files.length === 0) {
+    // 2. Detect Target (Right Side)
+    const isClientTarget = clientDatasetRightCheckbox.checked;
+    const targetType = isClientTarget ? "CLIENT" : "MYIPO";
+
+    // Labels for UI
+    const leftLabel = isClientSource ? "Client Dataset" : "Uploaded File";
+    const rightLabel = isClientTarget ? "Client Dataset" : "MYIPO Journals";
+
+    // Validation for Upload mode
+    if (!isClientSource && fileInputUpload.files.length === 0) {
         showPopup("Please upload a file first!", true);
         return;
     }
 
-    const comparisonInfo = document.getElementById("comparisonInfo");
+    // UI Setup
     const loadingSection = document.getElementById("loadingSection");
     const resultsSection = document.getElementById("resultsSection");
     const progressFill = document.querySelector(".progress-fill");
+    const comparisonInfo = document.getElementById("comparisonInfo");
 
-    // Reset UI
     resultsSection.classList.remove("show");
     loadingSection.classList.add("show");
     progressFill.style.width = "0%";
-    resultsGrid.innerHTML = ""; // Clear old results
-    comparisonInfo.textContent = `Comparing ${left} with ${right}`;
-    loadingSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    resultsGrid.innerHTML = "";
+    comparisonInfo.textContent = `Comparing ${leftLabel} with ${rightLabel}`;
 
+    // Prepare Data
     const formData = new FormData();
-    formData.append('file', fileInputUpload.files[0]);
-    formData.append('target', targetType);
+    if (!isClientSource) {
+        formData.append('file', fileInputUpload.files[0]);
+    }
+    formData.append('source_category', sourceCategory); // "CLIENT" or "UPLOAD"
+    formData.append('target', targetType);             // "CLIENT" or "MYIPO"
 
-      try {
-    const response = await fetch('/api/perform_comparison', {
-        method: 'POST',
-        body: formData
-    });
-    
-    const newResults = await response.json();
-    if (newResults.error) throw new Error(newResults.error);
+    try {
+        const response = await fetch('/api/perform_comparison', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const newResults = await response.json();
+        if (newResults.error) throw new Error(newResults.error);
 
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += 10;
-      progressFill.style.width = progress + "%";
-      if (progress >= 100) {
-        clearInterval(interval);
+        // ... (Keep your existing interval/progress and rendering logic) ...
+        // Your existing renderResultCard(match) will work perfectly here.
+
+    } catch (error) {
         loadingSection.classList.remove("show");
-
-        if (Array.isArray(newResults) && newResults.length > 0) {
-
-          // CASE 1: PDF comparison (nested results)
-          if (newResults[0].matches) {
-            newResults.forEach(pdfResult => {
-              // --- REMOVED THE HEADER BLOCK FROM HERE ---
-              pdfResult.matches.forEach(match => {
-                renderResultCard(match);
-              });
-            });
-
-          // CASE 2: Image comparison (flat results)
-          } else {
-            newResults.forEach(result => {
-              renderResultCard(result);
-            });
-          }
-
-        } else {
-          resultsGrid.innerHTML = "<p style='color:white;'>No results found.</p>";
-        }
-
-        resultsSection.classList.add("show");
-        resultsSection.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-    }, 30);
-
-  } catch (error) {
-    loadingSection.classList.remove("show");
-    showPopup("Error: " + error.message, true);
-  }
+        showPopup("Error: " + error.message, true);
+    }
 });
 
 function showPopup(message, isError = false) {

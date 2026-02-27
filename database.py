@@ -341,3 +341,22 @@ def search_trademarks(words=None, class_filter=None, id_list=None):
     trademarks = cur.fetchall()
     cur.close(); conn.close()
     return trademarks
+
+# ==============================================================================
+# GET QUERY (COMPARE)
+# ==============================================================================
+def get_query_items_by_category(category):
+    """Fetches full trademark data to be used as query items for comparison."""
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cur.execute("""
+        SELECT serial_number, trademark_name, description, logo_data 
+        FROM trademarks 
+        WHERE category = %s
+    """, (category,))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    # Format to match what the search loop expects
+    return [dict(r) for r in rows]

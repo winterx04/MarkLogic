@@ -471,68 +471,102 @@ def api_image_search():
 def compare():
     return render_template('compare.html')
 
+# @app.route('/api/perform_comparison', methods=['POST'])
+# def perform_comparison():
+#     file = request.files.get('file')
+#     if not file:
+#         return jsonify({'error': 'No file uploaded'}), 400
+
+#     # ---------------- CONFIG ----------------
+#     DEBUG = True
+#     TEXT_DIM = 384
+#     IMG_DIM = 512
+
+#     target = request.form.get('target', 'MYIPO').upper()
+#     filename = file.filename.lower()
+
+#     if DEBUG:
+#         print("\n================ COMPARISON START ================")
+#         print("Target category:", target)
+#         print("Filename:", filename)
+
+#     # =================================================
+#     # 1. LOAD DATABASE EMBEDDINGS
+#     # =================================================
+#     db_data = db.get_all_embeddings(category=target)
+
+#     if not db_data['ids']:
+#         print("❌ No embeddings found for category:", target)
+#         return jsonify({'error': 'Database is empty for this category'}), 400
+
+#     db_logo_vectors = np.vstack(db_data['logo']).astype('float32')
+#     db_text_vectors = np.vstack(db_data['text']).astype('float32')
+
+#     faiss.normalize_L2(db_logo_vectors)
+#     faiss.normalize_L2(db_text_vectors)
+
+#     image_index = faiss.IndexFlatIP(IMG_DIM)
+#     text_index = faiss.IndexFlatIP(TEXT_DIM)
+
+#     image_index.add(db_logo_vectors)
+#     text_index.add(db_text_vectors)
+
+#     if DEBUG:
+#         print(f"✔ Loaded {len(db_data['ids'])} DB trademarks")
+
+#     # =================================================
+#     # 2. INPUT TYPE (PDF or IMAGE)
+#     # =================================================
+#     if filename.endswith('.pdf'):
+#         query_items = extract_all(io.BytesIO(file.read()))
+#         input_type = "PDF"
+#     else:
+#         query_items = [{
+#             'serial_number': 'IMAGE_UPLOAD',
+#             'trademark_name': request.form.get('words', '').strip(),
+#             'description': '',
+#             'logo_data': file.read()
+#         }]
+#         input_type = "IMAGE"
+
+#     if not query_items:
+#         print("❌ No query items extracted")
+#         return jsonify([])
+
 @app.route('/api/perform_comparison', methods=['POST'])
 def perform_comparison():
     file = request.files.get('file')
-    if not file:
-        return jsonify({'error': 'No file uploaded'}), 400
-
-    # ---------------- CONFIG ----------------
-    DEBUG = True
-    TEXT_DIM = 384
-    IMG_DIM = 512
-
+    # NEW: Get the source type from the frontend
+    source_category = request.form.get('source_category', 'UPLOAD').upper() 
     target = request.form.get('target', 'MYIPO').upper()
-    filename = file.filename.lower()
 
-    if DEBUG:
-        print("\n================ COMPARISON START ================")
-        print("Target category:", target)
-        print("Filename:", filename)
+    # 1. Determine Query Items
+    query_items = []
 
-    # =================================================
-    # 1. LOAD DATABASE EMBEDDINGS
-    # =================================================
-    db_data = db.get_all_embeddings(category=target)
-
-    if not db_data['ids']:
-        print("❌ No embeddings found for category:", target)
-        return jsonify({'error': 'Database is empty for this category'}), 400
-
-    db_logo_vectors = np.vstack(db_data['logo']).astype('float32')
-    db_text_vectors = np.vstack(db_data['text']).astype('float32')
-
-    faiss.normalize_L2(db_logo_vectors)
-    faiss.normalize_L2(db_text_vectors)
-
-    image_index = faiss.IndexFlatIP(IMG_DIM)
-    text_index = faiss.IndexFlatIP(TEXT_DIM)
-
-    image_index.add(db_logo_vectors)
-    text_index.add(db_text_vectors)
-
-    if DEBUG:
-        print(f"✔ Loaded {len(db_data['ids'])} DB trademarks")
-
-    # =================================================
-    # 2. INPUT TYPE (PDF or IMAGE)
-    # =================================================
-    if filename.endswith('.pdf'):
-        query_items = extract_all(io.BytesIO(file.read()))
-        input_type = "PDF"
+    if source_category == 'UPLOAD':
+        if not file:
+            return jsonify({'error': 'No file uploaded'}), 400
+        
+        filename = file.filename.lower()
+        if filename.endswith('.pdf'):
+            query_items = extract_all(io.BytesIO(file.read()))
+            input_type = "PDF"
+        else:
+            query_items = [{
+                'serial_number': 'IMAGE_UPLOAD',
+                'trademark_name': request.form.get('words', '').strip(),
+                'description': '',
+                'logo_data': file.read()
+            }]
+            input_type = "IMAGE"
     else:
-        query_items = [{
-            'serial_number': 'IMAGE_UPLOAD',
-            'trademark_name': request.form.get('words', '').strip(),
-            'description': '',
-            'logo_data': file.read()
-        }]
-        input_type = "IMAGE"
+        # SOURCE IS CLIENT DATASET (Comparing DB to DB)
+        # Fetch all trademarks where category = 'CLIENT' to use as queries
+        query_items = db.get_query_items_by_category(source_category)
+        input_type = "PDF" # Treat as batch results (nested list)
 
     if not query_items:
-        print("❌ No query items extracted")
-        return jsonify([])
-
+        return jsonify({'error': 'No query items found in source'}), 400
     # =================================================
     # 3. SEARCH LOOP
     # =================================================
