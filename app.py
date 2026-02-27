@@ -19,7 +19,7 @@ import re
 # Import your updated database functions and the Perfect Extractor
 import database as db 
 from ml_utils import MLModel
-from pdf_extractor_backup import extract_all # This must be the stateful extractor we discussed
+from pdf_extractor import extract_all # This must be the stateful extractor we discussed
 
 app = Flask(__name__)
 app.secret_key = 'a_secure_random_secret_key'
@@ -535,13 +535,25 @@ def compare():
 
 @app.route('/api/perform_comparison', methods=['POST'])
 def perform_comparison():
+    # 1. Get Parameters from Frontend
     file = request.files.get('file')
-    # NEW: Get the source type from the frontend
     source_category = request.form.get('source_category', 'UPLOAD').upper() 
     target = request.form.get('target', 'MYIPO').upper()
 
-    # 1. Determine Query Items
+    # Configuration Constants
+    DEBUG = True
+    TEXT_DIM = 384
+    IMG_DIM = 512
+
+    if DEBUG:
+        print("\n================ COMPARISON START ================")
+        print(f"Source: {source_category} | Target: {target}")
+
+    # =================================================
+    # 2. DEFINE QUERY ITEMS (The "Left Side")
+    # =================================================
     query_items = []
+    input_type = "PDF" # Default to batch/PDF style results
 
     if source_category == 'UPLOAD':
         if not file:
@@ -560,103 +572,100 @@ def perform_comparison():
             }]
             input_type = "IMAGE"
     else:
-        # SOURCE IS CLIENT DATASET (Comparing DB to DB)
-        # Fetch all trademarks where category = 'CLIENT' to use as queries
+        # SOURCE IS CLIENT DATASET (Fetch from Database)
+        # You need to ensure get_query_items_by_category exists in database.py
         query_items = db.get_query_items_by_category(source_category)
-        input_type = "PDF" # Treat as batch results (nested list)
+        input_type = "PDF" 
 
     if not query_items:
-        return jsonify({'error': 'No query items found in source'}), 400
+        print(f"❌ No query items found for source: {source_category}")
+        return jsonify({'error': 'Source dataset is empty'}), 400
+
     # =================================================
-    # 3. SEARCH LOOP
+    # 3. LOAD TARGET DATABASE EMBEDDINGS (The "Right Side")
+    # =================================================
+    db_data = db.get_all_embeddings(category=target)
+
+    if not db_data['ids']:
+        print(f"❌ No embeddings found for target category: {target}")
+        return jsonify({'error': f'Target database ({target}) is empty'}), 400
+
+    # Build FAISS Indices for the target
+    db_logo_vectors = np.vstack(db_data['logo']).astype('float32')
+    db_text_vectors = np.vstack(db_data['text']).astype('float32')
+
+    faiss.normalize_L2(db_logo_vectors)
+    faiss.normalize_L2(db_text_vectors)
+
+    image_index = faiss.IndexFlatIP(IMG_DIM)
+    text_index = faiss.IndexFlatIP(TEXT_DIM)
+
+    image_index.add(db_logo_vectors)
+    text_index.add(db_text_vectors)
+
+    # =================================================
+    # 4. SEARCH LOOP
     # =================================================
     final_results = []
-
     conn = db.get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
     for q in query_items:
-        print("\n--- QUERY TRADEMARK ---")
-        print("Serial:", q.get('serial_number'))
-        print("Name:", q.get('trademark_name'))
-
-        # ---------------- TEXT EMBEDDING ----------------
+        # ---------------- TEXT SEARCH ----------------
         q_text = f"{q.get('trademark_name', '')} {q.get('description', '')}".strip()
         q_text_emb = ml_model.generate_text_embedding(q_text).reshape(1, -1)
         faiss.normalize_L2(q_text_emb)
-
         t_sims, t_idxs = text_index.search(q_text_emb, 20)
 
-        # ---------------- IMAGE EMBEDDING ----------------
+        # ---------------- IMAGE SEARCH ----------------
         l_sims, l_idxs = None, None
         if q.get('logo_data'):
-            q_logo_emb = ml_model.generate_image_embedding(io.BytesIO(q['logo_data']))
+            # Check if logo_data is bytes (from DB) or a file stream (from upload)
+            logo_source = io.BytesIO(q['logo_data']) if isinstance(q['logo_data'], (bytes, bytearray)) else q['logo_data']
+            q_logo_emb = ml_model.generate_image_embedding(logo_source)
             if q_logo_emb is not None:
                 q_logo_emb = q_logo_emb.reshape(1, -1)
                 faiss.normalize_L2(q_logo_emb)
                 l_sims, l_idxs = image_index.search(q_logo_emb, 20)
 
-        # =================================================
-        # 4. MERGE CANDIDATES
-        # =================================================
+        # ---------------- MERGE CANDIDATES ----------------
         candidates = {}
-
         for i, idx in enumerate(t_idxs[0]):
-            if idx == -1:
-                continue
+            if idx == -1: continue
             db_id = db_data['ids'][idx]
             candidates[db_id] = {'text': float(t_sims[0][i]), 'image': 0.0}
 
         if l_idxs is not None:
             for i, idx in enumerate(l_idxs[0]):
-                if idx == -1:
-                    continue
+                if idx == -1: continue
                 db_id = db_data['ids'][idx]
                 candidates.setdefault(db_id, {'text': 0.0, 'image': 0.0})
                 candidates[db_id]['image'] = float(l_sims[0][i])
 
-        # =================================================
-        # 5. SCORE + DEBUG
-        # =================================================
+        # ---------------- SCORING ----------------
         match_list = []
         q_name_upper = q.get('trademark_name', '').upper()
 
         for db_id, sims in candidates.items():
-            # UPDATED: Added description, class_indices, and agent_details to the SELECT
             cur.execute("""
                 SELECT trademark_name, serial_number, applicant_name, 
                        description, class_indices, agent_details
                 FROM trademarks WHERE id = %s
             """, (db_id,))
             row = cur.fetchone()
-            if not row:
-                continue
+            if not row: continue
 
             db_name_upper = (row['trademark_name'] or "").upper()
-
-            # Literal boost
             literal = 0.0
             if q_name_upper and db_name_upper:
-                if q_name_upper == db_name_upper:
-                    literal = 1.0
-                elif q_name_upper in db_name_upper:
-                    literal = 0.8
+                if q_name_upper == db_name_upper: literal = 1.0
+                elif q_name_upper in db_name_upper: literal = 0.8
 
-            # ================= SCORE FORMULA =================
+            # Formula based on input type
             if input_type == "IMAGE":
                 total = (sims['image'] * 0.8) + (sims['text'] * 0.2)
             else:
                 total = (literal * 0.4) + (sims['text'] * 0.4) + (sims['image'] * 0.2)
-
-            if DEBUG:
-                print(f"""
-DB ID: {db_id}
-Name: {row['trademark_name']}
-TextSim: {sims['text']:.3f}
-ImgSim: {sims['image']:.3f}
-Literal: {literal}
-FINAL SCORE: {total:.3f}
-                """)
 
             if total >= 0.40:
                 match_list.append({
@@ -673,17 +682,17 @@ FINAL SCORE: {total:.3f}
 
         match_list = sorted(match_list, key=lambda x: x['totalSim'], reverse=True)[:5]
 
-        if input_type == "PDF":
+        if input_type == "PDF" or source_category == "CLIENT":
             final_results.append({
-                'query_serial': q.get('serial_number'),
+                'query_serial': q.get('serial_number') or q.get('trademark_name'),
                 'matches': match_list
             })
         else:
+            # Single image upload returns a flat list
             final_results = match_list
 
     cur.close()
     conn.close()
-
     print("================ COMPARISON END =================\n")
     return jsonify(final_results)
 

@@ -222,34 +222,42 @@ class UltraRobustExtractor:
     def extract_logo_only(self, page, block_bbox):
         x0, y0, x1, y1 = block_bbox
 
-        header_height = (y1 - y0) * 0.4
-        header_bbox = (x0, y0, x1, y0 + header_height)
+        # 1. Targeted Header Area
+        # We look at the top 45% of the block. 
+        # We capture the left 50% of the page width (where logos live in MYIPO)
+        header_height = (y1 - y0) * 0.45
+        logo_zone_bbox = (x0, y0, x0 + (x1 - x0) * 0.5, y0 + header_height)
 
         try:
-            header_img = page.within_bbox(header_bbox).to_image(resolution=300)
+            # Render at high res to see small details
+            header_img = page.within_bbox(logo_zone_bbox).to_image(resolution=300)
+            img = header_img.original.convert("RGB")
+            arr = np.array(img)
+            
+            # Find all "ink" pixels
+            mask = np.any(arr < 240, axis=2)
+            if not mask.any(): return None
+
+            # 2. Grouping Logic
+            # Instead of picking one 'blob', find the bounding box of ALL blobs 
+            # on the left side. This ensures "LOUIS" and "VUITTON" stay together.
+            ys, xs = np.where(mask)
+            
+            # Crop the original image to the total bounding box of all ink found
+            cropped_logo = img.crop((xs.min(), ys.min(), xs.max(), ys.max()))
+            
+            # Convert to bytes
             buf = io.BytesIO()
-            header_img.original.save(buf, format="PNG")
-            raw_img_bytes = buf.getvalue()
+            cropped_logo.save(buf, format="PNG")
+            logo_bytes = buf.getvalue()
+
+            # Clean background and return
+            logo_bytes = self.remove_white_bg_make_transparent(logo_bytes)
+            return logo_bytes
+
         except Exception as e:
-            self.log(f"Logo render failed: {e}")
+            self.log(f"Logo extraction failed: {e}")
             return None
-
-        components = self.get_visual_components(raw_img_bytes, white_thresh=250, min_area=120)
-
-        if not components:
-            self.log("No visual components found")
-            return None
-
-        logo_bytes, _ = self.choose_logo_candidate(components, top_n=5)
-
-        if not logo_bytes:
-            return None
-
-        # ✅ two-stage tighten
-        logo_bytes = self.tight_crop_by_nonwhite(logo_bytes, white_thresh=250, pad=2)
-        logo_bytes = self.remove_white_bg_make_transparent(logo_bytes, white_thresh=245, soft=15)
-
-        return logo_bytes
 
     def get_visual_components(self, img_bytes, white_thresh=250, min_area=120):
         """Find separate visual components. Ignore lines / empty boxes. Prefer dense ink."""
@@ -358,41 +366,45 @@ class UltraRobustExtractor:
         components.sort(key=lambda c: (c.get("ink_ratio", 0.0), c["area"]), reverse=True)
         return components
 
-    def choose_logo_candidate(self, components, top_n=5):
+    def choose_logo_candidate_BY_AREA(self, components):
         """
-        If ML exists: pick best by CLIP similarity to anchor text.
-        Else: pick best by ink density (already sorted).
+        New Logic: Filters out vertical lines and tiny letters.
+        Selects the largest remaining visual component.
         """
-        if not components:
-            return None, None
+        valid_candidates = []
 
-        if not self.ml:
+        for comp in components:
+            # Calculate width and height of this specific component
+            bbox = comp["bbox"] # (x0, y0, x1, y1)
+            w = bbox[2] - bbox[0]
+            h = bbox[3] - bbox[1]
+            aspect_ratio = w / max(1, h)
+
+            # FILTER 1: Ignore vertical margin lines (extremely tall and thin)
+            if aspect_ratio < 0.1 or aspect_ratio > 10:
+                continue
+            
+            # FILTER 2: Ignore tiny noise/letters (Area threshold)
+            if comp["area"] < 400:
+                continue
+
+            valid_candidates.append(comp)
+
+        if not valid_candidates:
+            # Fallback to the first component if nothing matches filters
             return components[0]["png"], None
 
-        candidates = components[:min(top_n, len(components))]
-        anchor_text = "logo emblem trademark symbol wordmark brand mark"
-        anchor_emb = self.ml.generate_text_embedding(anchor_text)
-
-        best_png = None
+        # SORT BY AREA: The actual logo is almost always the largest visual item
+        valid_candidates.sort(key=lambda x: x["area"], reverse=True)
+        
+        best_comp = valid_candidates[0]
+        
+        # Optional: If you still want CLIP, generate embedding for the best one
         best_emb = None
-        best_score = -1e9
+        if self.ml:
+            best_emb = self.ml.generate_image_embedding(io.BytesIO(best_comp["png"]))
 
-        for comp in candidates:
-            raw_png = comp["png"]
-            emb = self.ml.generate_image_embedding(io.BytesIO(raw_png))
-            if emb is None or anchor_emb is None:
-                continue
-            score = float(np.dot(emb, anchor_emb))
-            if score > best_score:
-                best_score = score
-                best_png = raw_png
-                best_emb = emb
-
-        if best_png is None:
-            best_png = components[0]["png"]
-            best_emb = self.ml.generate_image_embedding(io.BytesIO(best_png))
-
-        return best_png, best_emb
+        return best_comp["png"], best_emb
 
     # =====================================================
     # FIELD EXTRACTION (same as your current logic)
@@ -450,14 +462,27 @@ class UltraRobustExtractor:
                 break
 
         body_lines = lines[content_start:agent_idx]
-        if not body_lines:
-            return fields, 0.4
+        clean_body = []
+        
+        for line in body_lines:
+            # STOP if we hit a new Serial Number or a new Class header 
+            # (This prevents the LV description from including the next company)
+            if self.serial_pattern.search(line) and line != fields["serial_number"]:
+                break
+            if "CLASS :" in line.upper():
+                break
+            clean_body.append(line)
+            
+        # Now process clean_body instead of body_lines
+        fields["description"] = " ".join(clean_body).strip()
 
+        # Look for applicant in the CLEANED body only
         app_idx = -1
-        for j in range(len(body_lines) - 1, -1, -1):
-            if ";" in body_lines[j]:
+        for j in range(len(clean_body) - 1, -1, -1):
+            if ";" in clean_body[j]:
                 app_idx = j
-                while app_idx > 0 and body_lines[app_idx - 1].isupper():
+                # Applicant names are usually all uppercase in these journals
+                while app_idx > 0 and clean_body[app_idx - 1].isupper():
                     app_idx -= 1
                 break
 
@@ -655,4 +680,5 @@ class UltraRobustExtractor:
 # -------------------------
 def extract_all(pdf_stream, debug=False):
     extractor = UltraRobustExtractor(debug=debug)
-    return extractor.extract_all(pdf_stream)
+    # Ensure it starts from page 1 or the standard MYIPO journal start page
+    return extractor.extract_all(pdf_stream, start_page=4)
