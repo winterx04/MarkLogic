@@ -128,3 +128,5 @@ class PerfectExtractor:
 def extract_all(pdf_stream):
     extractor = PerfectExtractor()
     return extractor.extract_all(pdf_stream)
+
+

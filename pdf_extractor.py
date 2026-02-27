@@ -1,6 +1,7 @@
-# ultra_robust_extractor_fixed.py
+# pdf_extractor.py
 """
 FIXED VERSION: Proper field extraction + logo-only cropping (no left-side text)
++ Logo output: tight crop + transparent bg (PNG)
 """
 
 import io
@@ -39,11 +40,12 @@ except Exception:
     SentenceTransformer = None
     _HAS_SENTE_TRANS = False
 
+
 # -------------------------
 # MLModel
 # -------------------------
 class MLModel:
-    def __init__(self, image_model_name='clip-ViT-B-32', text_model_name='all-MiniLM-L6-v2'):
+    def __init__(self, image_model_name="clip-ViT-B-32", text_model_name="all-MiniLM-L6-v2"):
         print("Loading ML models...")
         if not _HAS_SENTE_TRANS:
             raise RuntimeError("sentence_transformers not installed")
@@ -66,7 +68,7 @@ class MLModel:
             norm = np.linalg.norm(emb)
             if norm > 0:
                 emb = emb / norm
-            return emb.astype('float32')
+            return emb.astype("float32")
         except Exception as e:
             print(f"[MLModel] Error generating image embedding: {e}")
             return None
@@ -75,19 +77,19 @@ class MLModel:
         try:
             if not text:
                 dim = self.text_model.get_sentence_embedding_dimension()
-                return np.zeros(dim, dtype='float32')
+                return np.zeros(dim, dtype="float32")
             emb = self.text_model.encode(text, convert_to_numpy=True, show_progress_bar=False)
             norm = np.linalg.norm(emb)
             if norm > 0:
                 emb = emb / norm
-            return emb.astype('float32')
+            return emb.astype("float32")
         except Exception as e:
             print(f"[MLModel] Error generating text embedding: {e}")
             try:
                 dim = self.text_model.get_sentence_embedding_dimension()
-                return np.zeros(dim, dtype='float32')
+                return np.zeros(dim, dtype="float32")
             except Exception:
-                return np.zeros(384, dtype='float32')
+                return np.zeros(384, dtype="float32")
 
     def build_logo_index(self, db_fetch_fn):
         if not _HAS_FAISS:
@@ -95,15 +97,15 @@ class MLModel:
             return
 
         db_data = db_fetch_fn()
-        ids = db_data.get('ids', [])
-        logos = db_data.get('logo', [])
+        ids = db_data.get("ids", [])
+        logos = db_data.get("logo", [])
 
         entries = []
         id_map = []
         for db_id, emb in zip(ids, logos):
             if emb is None:
                 continue
-            arr = np.asarray(emb, dtype='float32')
+            arr = np.asarray(emb, dtype="float32")
             if arr.ndim != 1 or arr.size == 0:
                 continue
             faiss.normalize_L2(arr.reshape(1, -1))
@@ -114,11 +116,11 @@ class MLModel:
             print("[MLModel] No logo embeddings to index.")
             return
 
-        emb_np = np.vstack(entries).astype('float32')
+        emb_np = np.vstack(entries).astype("float32")
         dim = emb_np.shape[1]
         index = faiss.IndexFlatIP(dim)
         idmap = faiss.IndexIDMap(index)
-        idmap.add_with_ids(emb_np, np.array(id_map).astype('int64'))
+        idmap.add_with_ids(emb_np, np.array(id_map).astype("int64"))
         self.logo_index = idmap
         self.id_map = id_map
         print(f"[MLModel] FAISS logo index built with {self.logo_index.ntotal} vectors.")
@@ -129,7 +131,7 @@ class MLModel:
         if self.logo_index is None or self.logo_index.ntotal == 0:
             return [], []
 
-        q = np.asarray(query_embedding, dtype='float32').reshape(1, -1)
+        q = np.asarray(query_embedding, dtype="float32").reshape(1, -1)
         faiss.normalize_L2(q)
         D, I = self.logo_index.search(q, top_k)
         sims = D[0].tolist()
@@ -138,22 +140,21 @@ class MLModel:
 
 
 # -------------------------
-# UltraRobustExtractor - FIXED VERSION
+# UltraRobustExtractor
 # -------------------------
 class UltraRobustExtractor:
     def __init__(self, debug=False):
         self.debug = debug
         self.ml = None
-        
-        # Patterns
-        self.serial_pattern = re.compile(r'\b(?:TM|JV|WM|MM|[A-Z]{2})\d{8,12}\b')
+
+        self.serial_pattern = re.compile(r"\b(?:TM|JV|WM|MM|[A-Z]{2})\d{8,12}\b")
         self.date_pattern = re.compile(
-            r'\b\d{1,2}\s+(?:January|February|March|April|May|June|July|August|'
-            r'September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\b',
+            r"\b\d{1,2}\s+(?:January|February|March|April|May|June|July|August|"
+            r"September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\b",
             re.IGNORECASE
         )
-        self.class_header_pattern = re.compile(r'CLASS\s*:\s*([\d,\s]+)', re.IGNORECASE | re.MULTILINE)
-        self.company_kw = ['SDN', 'BHD', 'LTD', 'INC', 'PTY', 'CORP', 'LLC', 'PTE', 'CO.']
+        self.class_header_pattern = re.compile(r"CLASS\s*:\s*([\d,\s]+)", re.IGNORECASE | re.MULTILINE)
+        self.company_kw = ["SDN", "BHD", "LTD", "INC", "PTY", "CORP", "LLC", "PTE", "CO."]
 
     def log(self, msg):
         if self.debug:
@@ -163,43 +164,95 @@ class UltraRobustExtractor:
         self.ml = ml
 
     # =====================================================
-    # LOGO EXTRACTION - ONLY LOGO, NO TEXT
+    # LOGO HELPERS (MUST be inside class)
     # =====================================================
-    
+    def tight_crop_by_nonwhite(self, img_bytes: bytes, white_thresh=250, pad=2) -> bytes:
+        """Crop to minimal bounding box of non-white pixels."""
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        arr = np.array(img)
+
+        mask = np.any(arr < white_thresh, axis=2)
+        if not mask.any():
+            return img_bytes
+
+        ys, xs = np.where(mask)
+        y0, y1 = ys.min(), ys.max() + 1
+        x0, x1 = xs.min(), xs.max() + 1
+
+        x0 = max(0, x0 - pad)
+        y0 = max(0, y0 - pad)
+        x1 = min(arr.shape[1], x1 + pad)
+        y1 = min(arr.shape[0], y1 + pad)
+
+        cropped = img.crop((x0, y0, x1, y1))
+        buf = io.BytesIO()
+        cropped.save(buf, format="PNG")
+        return buf.getvalue()
+
+    def remove_white_bg_make_transparent(self, png_bytes: bytes, white_thresh=245, soft=15) -> bytes:
+        """Make near-white pixels transparent and crop using alpha bbox."""
+        img = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
+        px = img.load()
+        w, h = img.size
+
+        for y in range(h):
+            for x in range(w):
+                r, g, b, a = px[x, y]
+                m = min(r, g, b)
+
+                if m >= white_thresh:
+                    px[x, y] = (r, g, b, 0)
+                elif m >= white_thresh - soft:
+                    alpha = int(255 * (white_thresh - m) / soft)
+                    alpha = max(0, min(255, alpha))
+                    px[x, y] = (r, g, b, alpha)
+
+        alpha = img.split()[-1]
+        bbox = alpha.getbbox()
+        if bbox:
+            img = img.crop(bbox)
+
+        out = io.BytesIO()
+        img.save(out, format="PNG")
+        return out.getvalue()
+
+    # =====================================================
+    # LOGO EXTRACTION - ONLY LOGO (tight + transparent)
+    # =====================================================
     def extract_logo_only(self, page, block_bbox):
-        """
-        Extract ONLY the logo graphic, excluding all text.
-        Uses visual component detection + ML scoring.
-        """
         x0, y0, x1, y1 = block_bbox
-        
-        # Render the header area (top 40% of block)
+
         header_height = (y1 - y0) * 0.4
         header_bbox = (x0, y0, x1, y0 + header_height)
-        
+
         try:
-            header_img = page.within_bbox(header_bbox).to_image(resolution=200)
+            header_img = page.within_bbox(header_bbox).to_image(resolution=300)
             buf = io.BytesIO()
-            header_img.original.save(buf, format='PNG')
+            header_img.original.save(buf, format="PNG")
             raw_img_bytes = buf.getvalue()
         except Exception as e:
             self.log(f"Logo render failed: {e}")
             return None
-        
-        # Get visual components
-        components = self.get_visual_components(raw_img_bytes, white_thresh=250, min_area=200)
-        
+
+        components = self.get_visual_components(raw_img_bytes, white_thresh=250, min_area=120)
+
         if not components:
             self.log("No visual components found")
             return None
-        
-        # Choose best logo candidate
-        logo_bytes, logo_emb = self.choose_logo_candidate(components, top_n=3)
-        
+
+        logo_bytes, _ = self.choose_logo_candidate(components, top_n=5)
+
+        if not logo_bytes:
+            return None
+
+        # ✅ two-stage tighten
+        logo_bytes = self.tight_crop_by_nonwhite(logo_bytes, white_thresh=250, pad=2)
+        logo_bytes = self.remove_white_bg_make_transparent(logo_bytes, white_thresh=245, soft=15)
+
         return logo_bytes
-    
-    def get_visual_components(self, img_bytes, white_thresh=250, min_area=200):
-        """Find separate visual components (logo parts) in image"""
+
+    def get_visual_components(self, img_bytes, white_thresh=250, min_area=120):
+        """Find separate visual components. Ignore lines / empty boxes. Prefer dense ink."""
         try:
             img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
         except Exception as e:
@@ -207,451 +260,354 @@ class UltraRobustExtractor:
             return []
 
         arr = np.array(img)
-        # Mask of non-white pixels
         mask = np.any(arr < white_thresh, axis=2)
-        
         if not mask.any():
             return []
 
         components = []
-        
-        # Try OpenCV first (fastest)
+
+        def accept_component(x, y, w, h, area):
+            if area < min_area:
+                return False
+            if w <= 6 or h <= 6:
+                return False
+            aspect = w / max(1, h)
+            if aspect > 12 or aspect < 0.12:  # ignore horizontal rules / weird tall spikes
+                return False
+            region = mask[y:y+h, x:x+w]
+            ink_ratio = float(region.sum() / max(1, region.size))
+            if ink_ratio < 0.02:
+                return False
+            return True
+
         if _HAS_CV2:
             try:
-                num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
-                    (mask.astype('uint8') * 255), connectivity=8
+                num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
+                    (mask.astype("uint8") * 255),
+                    connectivity=8
                 )
-                for i in range(1, num_labels):  # Skip background (label 0)
+                for i in range(1, num_labels):
                     x, y, w, h, area = stats[i]
-                    if area < min_area:
+                    if not accept_component(x, y, w, h, area):
                         continue
-                    
-                    # Crop this component
-                    component_img = img.crop((x, y, x+w, y+h))
+
+                    region = mask[y:y+h, x:x+w]
+                    ink_ratio = float(region.sum() / max(1, region.size))
+
+                    component_img = img.crop((x, y, x + w, y + h))
                     buf = io.BytesIO()
-                    component_img.save(buf, format='PNG')
-                    
+                    component_img.save(buf, format="PNG")
+
                     components.append({
-                        'png': buf.getvalue(),
-                        'bbox': (x, y, x+w, y+h),
-                        'area': int(area)
+                        "png": buf.getvalue(),
+                        "bbox": (x, y, x + w, y + h),
+                        "area": int(area),
+                        "ink_ratio": ink_ratio
                     })
             except Exception as e:
                 self.log(f"cv2 component detection failed: {e}")
-        
-        # Fallback: scipy
+
         elif _HAS_NDI:
             try:
                 labeled, n = ndi.label(mask)
-                for lab in range(1, n+1):
+                for lab in range(1, n + 1):
                     ys, xs = np.where(labeled == lab)
                     if ys.size == 0:
                         continue
-                    
-                    y0, y1 = ys.min(), ys.max()+1
-                    x0, x1 = xs.min(), xs.max()+1
-                    area = (y1-y0) * (x1-x0)
-                    
-                    if area < min_area:
+                    y0, y1 = ys.min(), ys.max() + 1
+                    x0, x1 = xs.min(), xs.max() + 1
+                    h = y1 - y0
+                    w = x1 - x0
+                    area = h * w
+
+                    if not accept_component(x0, y0, w, h, area):
                         continue
-                    
+
+                    region = mask[y0:y1, x0:x1]
+                    ink_ratio = float(region.sum() / max(1, region.size))
+
                     component_img = img.crop((x0, y0, x1, y1))
                     buf = io.BytesIO()
-                    component_img.save(buf, format='PNG')
-                    
+                    component_img.save(buf, format="PNG")
+
                     components.append({
-                        'png': buf.getvalue(),
-                        'bbox': (x0, y0, x1, y1),
-                        'area': int(area)
+                        "png": buf.getvalue(),
+                        "bbox": (x0, y0, x1, y1),
+                        "area": int(area),
+                        "ink_ratio": ink_ratio
                     })
             except Exception as e:
                 self.log(f"scipy component detection failed: {e}")
-        
-        # Last resort: use entire non-white area
+
         if not components:
+            # fallback full bbox of all ink
             ys, xs = np.where(mask)
-            if ys.size > 0:
-                x0, y0 = xs.min(), ys.min()
-                x1, y1 = xs.max()+1, ys.max()+1
-                component_img = img.crop((x0, y0, x1, y1))
-                buf = io.BytesIO()
-                component_img.save(buf, format='PNG')
-                components.append({
-                    'png': buf.getvalue(),
-                    'bbox': (x0, y0, x1, y1),
-                    'area': int((y1-y0) * (x1-x0))
-                })
-        
-        # Sort by area (largest first)
-        components.sort(key=lambda c: c['area'], reverse=True)
+            x0, y0 = xs.min(), ys.min()
+            x1, y1 = xs.max() + 1, ys.max() + 1
+            component_img = img.crop((x0, y0, x1, y1))
+            buf = io.BytesIO()
+            component_img.save(buf, format="PNG")
+            components.append({
+                "png": buf.getvalue(),
+                "bbox": (x0, y0, x1, y1),
+                "area": int((y1 - y0) * (x1 - x0)),
+                "ink_ratio": 1.0
+            })
+
+        # Prefer dense ink first, then area
+        components.sort(key=lambda c: (c.get("ink_ratio", 0.0), c["area"]), reverse=True)
         return components
-    
-    def choose_logo_candidate(self, components, top_n=3):
+
+    def choose_logo_candidate(self, components, top_n=5):
         """
-        Choose best logo from components using ML embedding comparison.
-        Returns (png_bytes, embedding)
+        If ML exists: pick best by CLIP similarity to anchor text.
+        Else: pick best by ink density (already sorted).
         """
         if not components:
             return None, None
-        
-        # If no ML model, return largest component
+
         if not self.ml:
-            largest = components[0]
-            trimmed = self.trim_whitespace(largest['png'])
-            return trimmed, None
-        
-        # Test top N components
+            return components[0]["png"], None
+
         candidates = components[:min(top_n, len(components))]
-        
-        # Logo anchor text
-        logo_anchor_text = "logo emblem trademark symbol wordmark brand mark"
-        anchor_emb = self.ml.generate_text_embedding(logo_anchor_text)
-        
+        anchor_text = "logo emblem trademark symbol wordmark brand mark"
+        anchor_emb = self.ml.generate_text_embedding(anchor_text)
+
         best_png = None
         best_emb = None
-        best_score = -1.0
-        
+        best_score = -1e9
+
         for comp in candidates:
-            # Trim this component
-            trimmed_png = self.trim_whitespace(comp['png'])
-            
-            # Generate image embedding
-            comp_emb = self.ml.generate_image_embedding(io.BytesIO(trimmed_png))
-            
-            if comp_emb is None or anchor_emb is None:
+            raw_png = comp["png"]
+            emb = self.ml.generate_image_embedding(io.BytesIO(raw_png))
+            if emb is None or anchor_emb is None:
                 continue
-            
-            # Score: similarity to "logo" concept
-            score = float(np.dot(comp_emb, anchor_emb))
-            
+            score = float(np.dot(emb, anchor_emb))
             if score > best_score:
                 best_score = score
-                best_png = trimmed_png
-                best_emb = comp_emb
-        
-        # Fallback: largest component
+                best_png = raw_png
+                best_emb = emb
+
         if best_png is None:
-            best_png = self.trim_whitespace(candidates[0]['png'])
-            if self.ml:
-                best_emb = self.ml.generate_image_embedding(io.BytesIO(best_png))
-        
+            best_png = components[0]["png"]
+            best_emb = self.ml.generate_image_embedding(io.BytesIO(best_png))
+
         return best_png, best_emb
-    
-    def trim_whitespace(self, img_bytes, white_thresh=250, pad=5):
-        """Remove all whitespace, keeping only content with minimal padding"""
-        try:
-            img = Image.open(io.BytesIO(img_bytes)).convert('RGB')
-            arr = np.array(img)
-            
-            # Find non-white pixels
-            mask = np.any(arr < white_thresh, axis=2)
-            
-            if not mask.any():
-                return img_bytes
-            
-            coords = np.argwhere(mask)
-            y0, x0 = coords.min(axis=0)
-            y1, x1 = coords.max(axis=0)
-            
-            # Add minimal padding
-            y0 = max(0, y0 - pad)
-            x0 = max(0, x0 - pad)
-            y1 = min(arr.shape[0], y1 + pad + 1)
-            x1 = min(arr.shape[1], x1 + pad + 1)
-            
-            # Crop
-            cropped = img.crop((x0, y0, x1, y1))
-            
-            # Make white transparent
-            cropped_rgba = cropped.convert('RGBA')
-            data = np.array(cropped_rgba)
-            
-            # Set white pixels to transparent
-            white_mask = (data[:,:,0] >= white_thresh) & \
-                        (data[:,:,1] >= white_thresh) & \
-                        (data[:,:,2] >= white_thresh)
-            data[white_mask, 3] = 0
-            
-            result = Image.fromarray(data, 'RGBA')
-            buf = io.BytesIO()
-            result.save(buf, format='PNG')
-            
-            return buf.getvalue()
-            
-        except Exception as e:
-            self.log(f"trim_whitespace failed: {e}")
-            return img_bytes
 
     # =====================================================
-    # FIELD EXTRACTION - PROPER SEPARATION
+    # FIELD EXTRACTION (same as your current logic)
     # =====================================================
-    
     def parse_fields(self, text, lines):
-        """
-        Parse fields correctly - don't put everything in trademark_name!
-        """
         fields = {
-            'serial_number': None,
-            'registration_date': None,
-            'trademark_name': "",
-            'class_indices': "",
-            'applicant_name': "",
-            'applicant_address': "",
-            'agent_details': "",
-            'description': ""
+            "serial_number": None,
+            "registration_date": None,
+            "trademark_name": "",
+            "class_indices": "",
+            "applicant_name": "",
+            "applicant_address": "",
+            "agent_details": "",
+            "description": ""
         }
 
-        # === 1. SERIAL NUMBER & DATE ===
         for line in lines[:15]:
             m = self.serial_pattern.search(line)
             if m:
-                fields['serial_number'] = m.group(0)
-                # Date is often on same line as serial
+                fields["serial_number"] = m.group(0)
                 dm = self.date_pattern.search(line)
                 if dm:
-                    fields['registration_date'] = dm.group(0)
+                    fields["registration_date"] = dm.group(0)
                 break
-        
-        # === 2. CLASS INDICES ===
+
         m = self.class_header_pattern.search(text)
         if m:
-            fields['class_indices'] = m.group(1).strip()
+            fields["class_indices"] = m.group(1).strip()
 
-        # === 3. TRADEMARK NAME (from translation/transliteration) ===
-        # First try: quoted text in translation lines
         for line in lines[:20]:
-            if 'translation' in line.lower():
-                # Look for quoted text
+            if "translation" in line.lower():
                 quote_match = re.search(r'["\'](.*?)["\']', line)
                 if quote_match:
-                    fields['trademark_name'] = quote_match.group(1).strip()
+                    fields["trademark_name"] = quote_match.group(1).strip()
                     break
-            elif 'transliteration' in line.lower():
-                # Transliteration usually follows "transliteration:"
-                trans_match = re.search(r'transliteration:\s*(.+)', line, re.IGNORECASE)
+            elif "transliteration" in line.lower():
+                trans_match = re.search(r"transliteration:\s*(.+)", line, re.IGNORECASE)
                 if trans_match:
-                    # Take text until we hit "Registration" or similar
                     name_part = trans_match.group(1)
-                    name_part = re.split(r'\s+(?:Registration|The|This|Class)', name_part)[0]
-                    fields['trademark_name'] = name_part.strip()
+                    name_part = re.split(r"\s+(?:Registration|The|This|Class)", name_part)[0]
+                    fields["trademark_name"] = name_part.strip()
                     break
 
-        # === 4. AGENT (always at the end) ===
         agent_idx = len(lines)
         for i, line in enumerate(lines):
-            if 'AGENT' in line.upper():
-                fields['agent_details'] = ' '.join(lines[i:]).replace('AGENT :', '').replace('AGENT:', '').strip()
+            if "AGENT" in line.upper():
+                fields["agent_details"] = " ".join(lines[i:]).replace("AGENT :", "").replace("AGENT:", "").strip()
                 agent_idx = i
                 break
 
-        # === 5. FIND CONTENT START (after serial line) ===
         content_start = 0
         for i, line in enumerate(lines):
-            if fields['serial_number'] and fields['serial_number'] in line:
+            if fields["serial_number"] and fields["serial_number"] in line:
                 content_start = i + 1
                 break
 
-        # === 6. BODY CONTENT (between serial and agent) ===
         body_lines = lines[content_start:agent_idx]
-
         if not body_lines:
             return fields, 0.4
 
-        # === 7. SEPARATE APPLICANT FROM DESCRIPTION ===
-        # Look for company keywords or semicolon (address separator)
         app_idx = -1
-        
-        # Search backwards for applicant
-        for j in range(len(body_lines)-1, -1, -1):
-            line = body_lines[j]
-            
-            # Check for semicolon (address separator)
-            if ';' in line:
+        for j in range(len(body_lines) - 1, -1, -1):
+            if ";" in body_lines[j]:
                 app_idx = j
-                # Include previous ALL CAPS lines (company name)
-                while app_idx > 0 and body_lines[app_idx-1].isupper():
+                while app_idx > 0 and body_lines[app_idx - 1].isupper():
                     app_idx -= 1
                 break
-        
-        # Fallback: look for company keywords
+
         if app_idx == -1:
-            for j in range(len(body_lines)-1, max(0, len(body_lines)-15), -1):
+            for j in range(len(body_lines) - 1, max(0, len(body_lines) - 15), -1):
                 if any(kw in body_lines[j].upper() for kw in self.company_kw):
                     app_idx = j
-                    if app_idx > 0 and body_lines[app_idx-1].isupper():
+                    if app_idx > 0 and body_lines[app_idx - 1].isupper():
                         app_idx -= 1
                     break
 
-        # Extract based on found applicant position
         if app_idx != -1:
-            # DESCRIPTION is everything BEFORE applicant
-            fields['description'] = ' '.join(body_lines[:app_idx]).strip()
-            
-            # APPLICANT is from app_idx to end
-            applicant_block = ' '.join(body_lines[app_idx:]).strip()
-            
-            if ';' in applicant_block:
-                parts = applicant_block.split(';', 1)
-                fields['applicant_name'] = parts[0].strip()
-                fields['applicant_address'] = parts[1].strip() if len(parts) > 1 else ""
+            fields["description"] = " ".join(body_lines[:app_idx]).strip()
+            applicant_block = " ".join(body_lines[app_idx:]).strip()
+            if ";" in applicant_block:
+                parts = applicant_block.split(";", 1)
+                fields["applicant_name"] = parts[0].strip()
+                fields["applicant_address"] = parts[1].strip() if len(parts) > 1 else ""
             else:
-                fields['applicant_name'] = applicant_block
+                fields["applicant_name"] = applicant_block
         else:
-            # Couldn't separate - put everything in description
-            fields['description'] = ' '.join(body_lines).strip()
+            fields["description"] = " ".join(body_lines).strip()
 
-        # === 8. CLEAN DESCRIPTION AND EXTRACT NAME IF NEEDED ===
-        desc = fields['description']
-        
-        # Extract trademark name from description if not already found
-        # PREFER translation over transliteration
-        if not fields['trademark_name'] and desc:
-            # Pattern 1: Mark translation: "text" (HIGHEST PRIORITY)
+        desc = fields["description"]
+
+        if not fields["trademark_name"] and desc:
             match = re.search(r'Mark\s+translation:\s*["\']([^"\']+)["\']', desc)
             if match:
-                fields['trademark_name'] = match.group(1).strip()
+                fields["trademark_name"] = match.group(1).strip()
             else:
-                # Pattern 2: Mark transliteration: text (fallback)
-                match = re.search(r'Mark\s+transliteration:\s*([A-Za-z\s]+?)(?=\s*[A-Z]|\.|$)', desc)
+                match = re.search(r"Mark\s+transliteration:\s*([A-Za-z\s]+?)(?=\s*[A-Z]|\.|$)", desc)
                 if match:
-                    fields['trademark_name'] = match.group(1).strip()
-        
-        # Remove ALL translation/transliteration content
-        # This regex removes everything from "Mark translation" until the next capital letter word
-        desc = re.sub(r'Mark\s+translation:[^\.]+\.\s*', '', desc)
-        desc = re.sub(r'Mark\s+transliteration:[^\.]+\.\s*', '', desc)
-        # Also remove partial matches without periods
-        desc = re.sub(r'Mark\s+translation:[^A-Z]+', '', desc)
-        desc = re.sub(r'Mark\s+transliteration:[^A-Z]+', '', desc)
-        
-        # Remove registration notice lines
-        desc = re.sub(r'Registration of this trademark[^\.]+\.', '', desc, flags=re.IGNORECASE)
-        
-        # Remove any stray serial numbers and dates
-        if fields['serial_number']:
-            desc = desc.replace(fields['serial_number'], '')
-        if fields['registration_date']:
-            desc = desc.replace(fields['registration_date'], '')
-        
-        # Remove CLASS headers
-        desc = re.sub(r'CLASS\s*:\s*[\d,\s]+', '', desc, flags=re.IGNORECASE)
-        desc = re.sub(r'\bCLASS\s+\d+\b', '', desc)
-        
-        # Clean up excessive whitespace
-        desc = re.sub(r'\s+', ' ', desc).strip()
-        # Remove leading punctuation and whitespace
-        desc = desc.lstrip(';:,. ')
-        
-        fields['description'] = desc
+                    fields["trademark_name"] = match.group(1).strip()
 
-        # === 9. COMPLETENESS SCORE ===
+        desc = re.sub(r"Mark\s+translation:[^\.]+\.\s*", "", desc)
+        desc = re.sub(r"Mark\s+transliteration:[^\.]+\.\s*", "", desc)
+        desc = re.sub(r"Mark\s+translation:[^A-Z]+", "", desc)
+        desc = re.sub(r"Mark\s+transliteration:[^A-Z]+", "", desc)
+
+        desc = re.sub(r"Registration of this trademark[^\.]+\.", "", desc, flags=re.IGNORECASE)
+
+        if fields["serial_number"]:
+            desc = desc.replace(fields["serial_number"], "")
+        if fields["registration_date"]:
+            desc = desc.replace(fields["registration_date"], "")
+
+        desc = re.sub(r"CLASS\s*:\s*[\d,\s]+", "", desc, flags=re.IGNORECASE)
+        desc = re.sub(r"\bCLASS\s+\d+\b", "", desc)
+
+        desc = re.sub(r"\s+", " ", desc).strip()
+        desc = desc.lstrip(";:,. ")
+        fields["description"] = desc
+
         score = 0.0
-        if fields['serial_number']: score += 0.25
-        if fields['registration_date']: score += 0.10
-        if fields['class_indices']: score += 0.15
-        if fields['applicant_name']: score += 0.20
-        if fields['agent_details']: score += 0.10
-        if len(fields['description']) > 50: score += 0.20
+        if fields["serial_number"]:
+            score += 0.25
+        if fields["registration_date"]:
+            score += 0.10
+        if fields["class_indices"]:
+            score += 0.15
+        if fields["applicant_name"]:
+            score += 0.20
+        if fields["agent_details"]:
+            score += 0.10
+        if len(fields["description"]) > 50:
+            score += 0.20
 
         return fields, score
 
     # =====================================================
-    # BLOCK DETECTION & EXTRACTION
+    # BLOCK DETECTION
     # =====================================================
-    
     def find_blocks(self, page):
-        """Find trademark blocks using CLASS and AGENT markers"""
         words = page.extract_words()
         h = page.height
         w = page.width
-        
+
         lines = {}
         for word in words:
-            y = round(word['top'], 1)
+            y = round(word["top"], 1)
             lines.setdefault(y, []).append(word)
 
-        # Find CLASS : headers
         class_ys = []
         for y, ws in sorted(lines.items()):
-            txt = ' '.join(w['text'] for w in ws)
-            if re.match(r'^\s*CLASS\s*:\s*[\d,\s]+\s*$', txt, re.IGNORECASE):
+            txt = " ".join(w["text"] for w in ws)
+            if re.match(r"^\s*CLASS\s*:\s*[\d,\s]+\s*$", txt, re.IGNORECASE):
                 class_ys.append(y)
 
-        # Find AGENT : lines
         agent_ys = []
         for y, ws in sorted(lines.items()):
-            txt = ' '.join(w['text'] for w in ws)
-            if txt.strip().upper().startswith('AGENT'):
+            txt = " ".join(w["text"] for w in ws)
+            if txt.strip().upper().startswith("AGENT"):
                 agent_ys.append(y)
 
         if not class_ys:
             return []
 
         blocks = []
-        for i, cy in enumerate(class_ys):
-            # Find previous AGENT
+        for cy in class_ys:
             prev_agent = None
             for ay in agent_ys:
                 if ay < cy:
                     prev_agent = ay
-            
-            # Find current AGENT
+
             curr_agent = None
             for ay in agent_ys:
                 if ay > cy:
                     curr_agent = ay
                     break
-            
+
             y0 = (prev_agent + 25) if prev_agent else max(cy - 120, 50)
             y1 = (curr_agent + 15) if curr_agent else h - 60
-            
+
             if y1 - y0 > 100:
-                blocks.append({'bbox': (0, y0, w, y1), 'class_y': cy})
-        
+                blocks.append({"bbox": (0, y0, w, y1), "class_y": cy})
+
         return blocks
 
     def extract_from_block(self, page, block_info, page_num):
-        """Extract trademark data from a single block"""
-        bbox = block_info['bbox']
-        
-        # Extract text
+        bbox = block_info["bbox"]
+
         block_page = page.within_bbox(bbox)
         text = block_page.extract_text()
-        
         if not text:
             return None
-        
-        lines = [line.strip() for line in text.split('\n') if line.strip()]
-        
-        # Parse all fields
+
+        lines = [line.strip() for line in text.split("\n") if line.strip()]
         fields, completeness = self.parse_fields(text, lines)
-        
-        # Must have serial number
-        if not fields['serial_number']:
+
+        if not fields["serial_number"]:
             self.log("❌ No serial number - skipping")
             return None
-        
-        # Extract logo (ONLY the graphic, no text)
+
         logo_data = self.extract_logo_only(page, bbox)
-        
-        # Generate embedding if ML model available
+
         logo_emb = None
         if logo_data and self.ml:
             try:
                 logo_emb = self.ml.generate_image_embedding(io.BytesIO(logo_data))
             except Exception as e:
                 self.log(f"Logo embedding failed: {e}")
-        
-        # Block snapshot
+
         try:
             block_img = block_page.to_image(resolution=150)
             buf = io.BytesIO()
-            block_img.original.save(buf, format='PNG')
+            block_img.original.save(buf, format="PNG")
             snapshot = buf.getvalue()
-        except:
+        except Exception:
             snapshot = None
-        
-        # Generate text embedding
+
         text_emb = None
         if self.ml:
             try:
@@ -659,63 +615,38 @@ class UltraRobustExtractor:
                 text_emb = self.ml.generate_text_embedding(combined_text)
             except Exception as e:
                 self.log(f"Text embedding failed: {e}")
-        
+
         result = {
-            'page_number': page_num,
-            'serial_number': fields['serial_number'],
-            'registration_date': fields['registration_date'],
-            'trademark_name': fields['trademark_name'],
-            'class_indices': fields['class_indices'],
-            'applicant_name': fields['applicant_name'],
-            'applicant_address': fields['applicant_address'],
-            'agent_details': fields['agent_details'],
-            'description': fields['description'],
-            'logo_data': logo_data,
-            'logo_embedding': logo_emb,
-            'text_embedding': text_emb,
-            'block_snapshot': snapshot,
-            'completeness': completeness
+            "page_number": page_num,
+            "serial_number": fields["serial_number"],
+            "registration_date": fields["registration_date"],
+            "trademark_name": fields["trademark_name"],
+            "class_indices": fields["class_indices"],
+            "applicant_name": fields["applicant_name"],
+            "applicant_address": fields["applicant_address"],
+            "agent_details": fields["agent_details"],
+            "description": fields["description"],
+            "logo_data": logo_data,
+            "logo_embedding": logo_emb,
+            "text_embedding": text_emb,
+            "block_snapshot": snapshot,
+            "completeness": completeness
         }
-        
-        if completeness < 0.7:
-            self.log(f"⚠️  {fields['serial_number']}: {completeness*100:.0f}% complete")
-        else:
-            self.log(f"✅ {fields['serial_number']}: {completeness*100:.0f}% complete")
-        
+
         return result
 
     def extract_all(self, pdf_stream, start_page=9):
-        """Extract all trademarks from PDF"""
         results = []
-        
         with pdfplumber.open(pdf_stream) as pdf:
-            total = len(pdf.pages)
-            self.log(f"📚 Processing {total} pages starting from page {start_page}")
-            
-            for pnum, page in enumerate(pdf.pages[start_page-1:], start=start_page):
-                self.log(f"\n{'='*60}\n📄 Page {pnum}\n{'='*60}")
-                
+            for pnum, page in enumerate(pdf.pages[start_page - 1:], start=start_page):
                 try:
                     blocks = self.find_blocks(page)
-                    
                     for block in blocks:
-                        try:
-                            data = self.extract_from_block(page, block, pnum)
-                            if data:
-                                results.append(data)
-                        except Exception as e:
-                            self.log(f"❌ Block extraction failed: {e}")
-                            
+                        data = self.extract_from_block(page, block, pnum)
+                        if data:
+                            results.append(data)
                 except Exception as e:
                     self.log(f"❌ Page {pnum} failed: {e}")
-        
-        self.log(f"\n{'='*60}")
-        self.log(f"✅ Extracted {len(results)} trademarks")
-        
-        incomplete = [r for r in results if r['completeness'] < 0.7]
-        if incomplete:
-            self.log(f"⚠️  {len(incomplete)} incomplete records")
-        
         return results
 
 
@@ -723,57 +654,5 @@ class UltraRobustExtractor:
 # Convenience function for Flask
 # -------------------------
 def extract_all(pdf_stream, debug=False):
-    """Main entry point for Flask integration"""
     extractor = UltraRobustExtractor(debug=debug)
     return extractor.extract_all(pdf_stream)
-
-
-# -------------------------
-# CLI usage
-# -------------------------
-if __name__ == "__main__":
-    import sys
-    
-    if len(sys.argv) < 2:
-        print("Usage: python ultra_robust_extractor_fixed.py <pdf_path>")
-        sys.exit(1)
-
-    pdf_path = sys.argv[1]
-    
-    # Optional: Initialize ML model
-    try:
-        print("Initializing ML model...")
-        ml = MLModel()
-        
-        extractor = UltraRobustExtractor(debug=True)
-        extractor.set_ml_model(ml)
-    except Exception as e:
-        print(f"ML model init failed: {e}, continuing without ML")
-        extractor = UltraRobustExtractor(debug=True)
-
-    results = extractor.extract_all(pdf_path, start_page=9)
-    
-    print(f"\n{'='*60}")
-    print(f"📊 SUMMARY")
-    print(f"{'='*60}")
-    print(f"Total extracted: {len(results)}")
-    
-    if results:
-        avg_completeness = sum(r['completeness'] for r in results) / len(results)
-        print(f"Avg completeness: {avg_completeness*100:.1f}%")
-        
-        with_logos = sum(1 for r in results if r['logo_data'])
-        print(f"With logos: {with_logos}/{len(results)}")
-        
-        # Save logos for inspection
-        outdir = "extracted_logos"
-        os.makedirs(outdir, exist_ok=True)
-        for i, r in enumerate(results[:5]):  # Save first 5
-            if r.get('logo_data'):
-                fname = os.path.join(outdir, f"logo_{r['serial_number']}.png")
-                try:
-                    with open(fname, 'wb') as f:
-                        f.write(r['logo_data'])
-                    print(f"✓ Saved {fname}")
-                except Exception as e:
-                    print(f"✗ Error saving {fname}: {e}")

@@ -13,7 +13,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_mail import Mail, Message
 from PIL import Image
 from flask import abort  
-
+from flask import request, jsonify
+import traceback
+import re
 # Import your updated database functions and the Perfect Extractor
 import database as db 
 from ml_utils import MLModel
@@ -267,11 +269,11 @@ def dataset():
 def client_dataset():
     return render_template('client-dataset.html')
 
-@app.route('/upload-journal/<category>', methods=['POST'])
-@admin_required 
-def upload_journal(category):
-    import traceback
 
+
+@app.route('/upload-journal/<category>', methods=['POST'])
+@admin_required
+def upload_journal(category):
     file = request.files.get('file')
     batch = request.form.get('batch_number')
     year = request.form.get('batch_year')
@@ -279,38 +281,65 @@ def upload_journal(category):
     if not file or not batch or not year:
         return jsonify({'success': False, 'message': 'Missing File, Batch, or Year'}), 400
 
-    try:
-        print(f"📄 Starting extraction from {file.filename}...")  
-        raw_data = extract_all(io.BytesIO(file.read()))
-        print(f"✅ Extracted {len(raw_data)} trademarks")  
+    def looks_like_goods(s: str) -> bool:
+        s_up = (s or "").upper()
+        bad_kw = ["DETERGENT", "PREPARATIONS", "SOAP", "LAUNDRY", "DISH-WASHING", "BLEACHING", "SUBSTANCES"]
+        return any(k in s_up for k in bad_kw)
 
+    try:
+        print(f"📄 Starting extraction from {file.filename}...")
+        raw_data = extract_all(io.BytesIO(file.read()))
+        print(f"✅ Extracted {len(raw_data)} trademarks")
+
+        inserted = 0
+        warnings = []
 
         for tm in raw_data:
+            # -------- normalize keys --------
+            # extractor uses block_snapshot; DB expects evidence_snapshot
+            if tm.get("block_snapshot") and not tm.get("evidence_snapshot"):
+                tm["evidence_snapshot"] = tm["block_snapshot"]
+
             tm['category'] = category
             tm['batch_number'] = batch
             tm['batch_year'] = year
 
-            # 1. Text embedding
-            combined_text = f"{tm['trademark_name']} {tm['description']}"
-            tm['text_embedding'] = ml_model.generate_text_embedding(combined_text)
+            # -------- sanity checks (optional but recommended) --------
+            # If applicant_name looks like goods => parsing likely wrong
+            if looks_like_goods(tm.get("applicant_name", "")):
+                warnings.append({
+                    "serial_number": tm.get("serial_number"),
+                    "issue": "applicant_name looks like goods/description; skipped to avoid poisoning DB",
+                    "applicant_name": tm.get("applicant_name", "")[:120],
+                })
+                continue
 
-            # 2. Safe logo embedding
-            if tm.get('logo_data') and isinstance(tm['logo_data'], bytes) and len(tm['logo_data']) > 0:
+            # 1) Text embedding
+            combined_text = f"{tm.get('trademark_name','')} {tm.get('description','')}".strip()
+            tm['text_embedding'] = ml_model.generate_text_embedding(combined_text) if combined_text else None
+
+            # 2) Safe logo embedding
+            if tm.get('logo_data') and isinstance(tm['logo_data'], (bytes, bytearray)) and len(tm['logo_data']) > 0:
                 tm['logo_embedding'] = ml_model.generate_image_embedding(io.BytesIO(tm['logo_data']))
             else:
                 tm['logo_embedding'] = None
-                tm['logo_data'] = None  # prevent passing None to DB or ML
+                tm['logo_data'] = None
 
-            # 3. Insert into DB
+            # 3) Insert into DB
             db.insert_trademark(tm)
+            inserted += 1
 
         ml_model.build_logo_index()
-        return jsonify({'success': True, 'message': f'Imported {len(raw_data)} records into Batch {batch}/{year}'})
+
+        msg = f'Imported {inserted} records into Batch {batch}/{year}'
+        if warnings:
+            msg += f' (Skipped {len(warnings)} suspicious records)'
+
+        return jsonify({'success': True, 'message': msg, 'warnings': warnings})
 
     except Exception as e:
-        traceback.print_exc()  # Prints full Python error
+        traceback.print_exc()
         return jsonify({'success': False, 'message': str(e)}), 500
-
 
 
 # GET /api/trademarks  -> list or search (query params: batch_number, batch_year, q, class)
