@@ -160,7 +160,7 @@ function getFileIcon(ext) {
   }
 }
 
-function renderResultCard(result) {
+function renderResultCard(result, allMatches) {
   const card = document.createElement("div");
   card.className = "result-card";
 
@@ -185,26 +185,10 @@ function renderResultCard(result) {
       </div>
     </div>
   `;
-    // // Map the backend keys to what the Modal expects
-    // card.addEventListener("click", () => openDetailModal({
-    //     id: result.id,
-    //     label: result.label,
-    //     imgSim: result.imgSim,
-    //     textSim: result.textSim,
-    //     modalTrademarkNum: result.serial,
-    //     modalDescription: result.description || "No description provided."
-    // }));
-  card.addEventListener("click", () => openDetailModal({
-      id: result.id,
-      label: result.label,
-      imgSim: result.imgSim,
-      textSim: result.textSim,
-      modalTrademarkNum: result.serial,
-      modalDescription: result.description, // Passed from Python match_list
-      modalClass: result.modalClass,         // Passed from Python match_list
-      modalAgent: result.modalAgent           // Passed from Python match_list
-  }));
-    resultsGrid.appendChild(card);
+
+  // PASS BOTH the specific result and the full list of matches to the modal
+  card.addEventListener("click", () => openDetailModal(result, allMatches));
+  resultsGrid.appendChild(card);
 }
 
 compareBtn.addEventListener("click", async () => {
@@ -252,12 +236,13 @@ compareBtn.addEventListener("click", async () => {
 
         // IMAGE upload
         if (Array.isArray(results) && results.length && !results[0].matches) {
-            results.forEach(renderResultCard);
+            results.forEach(res => renderResultCard(res, results));
         }
         // PDF / CLIENT
         else {
             results.forEach(group => {
-                group.matches.forEach(renderResultCard);
+                // We pass group.matches as the second argument here
+                group.matches.forEach(res => renderResultCard(res, group.matches));
             });
         }
 
@@ -325,30 +310,74 @@ updateButtonState();
 
 //   detailModal.classList.add("show");
 // }
-function openDetailModal(data) {
+// Replace your existing openDetailModal with this:
+function openDetailModal(data, allMatches = []) {
+  // --- Check if data is exists and getting fetched correctly ---
   console.log("Modal Data Received:", data);
+  // --- CLARIFICATION LOGS ---
+  console.group("🔍 Score Calculation Breakdown");
+  console.log(`Company: ${data.label}`);
+  console.log(`1. Image Similarity (AI): ${data.imgSim}%`);
+  console.log(`2. Text Similarity (AI + Literal): ${data.textSim}%`);
+  console.log(`3. Final Weighted Match Score: ${data.totalSim}%`);
+  console.log("Calculation Logic: (Literal Match * 0.4) + (Text AI * 0.4) + (Image AI * 0.2)");
+  console.groupEnd();
 
-  // 1. Image & Company Name (These are working)
+  if (allMatches.length > 0) {
+      console.log("📊 Top 3 Matches Raw Data:", allMatches.slice(0, 3));
+  }
+  // 1. Fill main fields
   document.getElementById("modalImage").src = `/logo/${data.id}`;
   document.getElementById("modalCompanyName").textContent = data.label || "N/A";
-
-  // 2. Similarities (These are working)
   document.getElementById("modalImageSim").textContent = `${data.imgSim}%`;
   document.getElementById("modalTextSim").textContent = `${data.textSim}%`;
-
-  // 3. FIX: Trademark Number
-  // The console shows the key is called 'modalTrademarkNum'
-  document.getElementById("modalTrademarkNum").textContent = data.modalTrademarkNum || "N/A";
-
-  // 4. Class & Agent (These are working)
+  document.getElementById("modalTrademarkNum").textContent = data.serial || data.modalTrademarkNum || "N/A";
   document.getElementById("modalClass").textContent = data.modalClass || "N/A";
   document.getElementById("modalAgent").textContent = data.modalAgent || "N/A";
+  document.getElementById("modalDescription").textContent = data.description || data.modalDescription || "N/A";
 
-  // 5. FIX: Description 
-  // The console shows the key is called 'modalDescription'
-  document.getElementById("modalDescription").textContent = data.modalDescription || "N/A";
+  // 2. Populate Top 3 Matches List
+  const matchesList = document.getElementById("modalMatchesList");
+  matchesList.innerHTML = ""; // Clear existing
 
-  // 6. Show the modal
+  // Filter out the current item so it doesn't show itself as a match
+  const others = allMatches.filter(m => m.id !== data.id).slice(0, 3);
+
+  if (others.length === 0) {
+    matchesList.innerHTML = "<p style='color: #888; padding: 10px; font-style: italic;'>No other similar matches found.</p>";
+  } else {
+    others.forEach(m => {
+      const matchItem = document.createElement("div");
+      matchItem.className = "modal-match-row"; 
+      // Add inline styles for a clean list look
+      matchItem.style = "display: flex; align-items: center; gap: 15px; padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; transition: background 0.2s;";
+      
+      matchItem.innerHTML = `
+        <img src="/logo/${m.id}" style="width: 45px; height: 45px; object-fit: contain; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
+        <div style="flex: 1;">
+          <div style="font-weight: 600; font-size: 0.9rem; color: #333;">${m.label}</div>
+          <div style="font-size: 0.8rem; color: #666;">${m.serial || m.modalTrademarkNum}</div>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-weight: bold; color: #4f46e5;">${m.totalSim}%</div>
+          <div style="font-size: 0.7rem; color: #999;">Match Score</div>
+        </div>
+      `;
+
+      // Allow user to click a "Top 3" item to switch the modal to that trademark
+      matchItem.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openDetailModal(m, allMatches);
+      });
+
+      // Hover effect
+      matchItem.onmouseenter = () => matchItem.style.background = "#f1f5f9";
+      matchItem.onmouseleave = () => matchItem.style.background = "transparent";
+
+      matchesList.appendChild(matchItem);
+    });
+  }
+
   const detailModal = document.getElementById("detailModal");
   detailModal.classList.add("show");
 }
