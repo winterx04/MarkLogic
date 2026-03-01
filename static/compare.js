@@ -160,124 +160,6 @@ function getFileIcon(ext) {
   }
 }
 
-// compareBtn.addEventListener("click", () => {
-//   const left = uploadCheckbox.checked ? "Upload File" : "Client Dataset";
-//   const right = miyoCheckbox.checked ? "MYIPO Journals" : "Client Dataset";
-
-//   // ✅ Show popup
-//   showPopup(`Comparing ${left} with ${right}...`);
-
-//   // ✅ Get sections
-//   const comparisonInfo = document.getElementById("comparisonInfo");
-//   const loadingSection = document.getElementById("loadingSection");
-//   const resultsSection = document.getElementById("resultsSection");
-//   const progressFill = document.querySelector(".progress-fill");
-//   const resultsGrid = document.querySelector(".results-grid");
-
-//   if (comparisonInfo && loadingSection && resultsSection && resultsGrid) {
-//     // 🧹 Reset previous results completely
-//     resultsSection.classList.remove("show");
-//     loadingSection.classList.remove("show");
-//     progressFill.style.width = "0%";
-//     resultsGrid.innerHTML = ""; // ✅ clear old result cards
-
-//     // 📝 Update info text
-//     comparisonInfo.textContent = `Comparing ${left} with ${right}`;
-
-//     // 🔄 Show loading
-//     loadingSection.classList.add("show");
-
-//     // 🪄 Scroll smoothly to loading section
-//     loadingSection.scrollIntoView({ behavior: "smooth", block: "start" });
-
-//     // 📈 Animate progress bar
-//     let progress = 0;
-//     const interval = setInterval(() => {
-//       progress += 2;
-//       if (progress > 100) progress = 100;
-//       progressFill.style.width = progress + "%";
-//     }, 70);
-
-//     // ⏳ Simulate comparison and show fresh results
-//     setTimeout(() => {
-//       clearInterval(interval);
-//       loadingSection.classList.remove("show");
-
-//       // 🧩 Generate new cards dynamically (you can adjust content later)
-//       const newResults = [
-//         { 
-//           img: "icons/trademark-1.png", 
-//           label: "CM LIEW ENTERPRISE SDN. BHD. ", 
-//           imgSim: 70, 
-//           textSim: 70, 
-//           modalTrademarkNum: "2018002150", 
-//           modalClass: "35", 
-//           modalAgent: "CM LIEW ENTERPRISE SDN. BHD.", 
-//           modalDescription: "Registration of this trademark shall give no right to the exclusive use of the letters ‘cm’ and the words ‘auto electrical in alternator & starter motor’. Business management, business administration, advertising in retail outlet relating of alternator, starter motor, ignition distributor and spare parts (automotive); All included in class 35." 
-//         },
-//         {
-//           img: "icons/trademark-2.png",
-//           label: "DAPPER CORPORATION SDN. BHD.",
-//           imgSim: 90,
-//           textSim: 30,
-//           modalTrademarkNum: "TM2019037183",
-//           modalClass: "35",
-//           modalAgent: "No Agent",
-//           modalDescription: 'Registration of this trade mark shall give no right to the exclusive use of letters "df" and the word "denim". Retail and wholesale for selling clothing, footwear, headgear bags, belt; all included in class 35.'
-//         },
-
-//         { 
-//           img: "icons/trademark-3.png", 
-//           label: "JOHN HOLLAND GROUP PTY LTD", 
-//           imgSim: 20, 
-//           textSim: 85 ,
-//           modalTrademarkNum: "2018060412",
-//           modalClass: "36",
-//           modalAgent: "SHOOK LIN & BOK, 20th Floor, AmBank Group Building, 55 Jalan Raja Chulan, 50200 Kuala Lumpur",
-//           modalDescription: 'International priority date claimed : 23 April 2018, Honduras Acquisition for financial investment; Administration of investment funds; Administration of investments; Arranging finance for construction projects; Capital fund investment; Commercial property investment services; Financial asset management; Financial investment; Leasing of property; Provision of housing accommodation; Real estate investment; Real estate services relating to property development; Rental of accommodation; Rental of apartments; Rental of commercial premises; Rental of offices; Rental of property; Rental of real estate; All included in class 36.'
-//         }
-//       ];
-
-//       newResults.forEach(result => {
-//         const card = document.createElement("div");
-//         card.className = "result-card";
-        
-//         const imgClass = result.imgSim > 50 ? "high" : "low";
-//         const textClass = result.textSim > 50 ? "high" : "low";
-        
-//         card.innerHTML = `
-//           <div class="card-top">
-//             <div class="card-icon"><img src="${result.img}" alt="${result.label} Icon"></div>
-//             <div class="card-label">${result.label}</div>
-//             <div class="card-similarities">
-//               <div class="similarity-item">
-//                 <span class="similarity-label">Image Similarity</span>
-//                 <span class="similarity-percentage ${imgClass}">${result.imgSim}%</span>
-//               </div>
-//               <div class="similarity-item">
-//                 <span class="similarity-label">Text Similarity</span>
-//                 <span class="similarity-percentage ${textClass}">${result.textSim}%</span>
-//               </div>
-//             </div>
-//           </div>
-//         `;
-
-//         // 🟢 ADD THIS — open modal on click
-//         card.addEventListener("click", () => openDetailModal(result));
-
-//         resultsGrid.appendChild(card);
-//       });
-
-
-//       // ✅ Show fresh result section
-//       resultsSection.classList.add("show");
-
-//       // Scroll to new results
-//       resultsSection.scrollIntoView({ behavior: "smooth", block: "start" });
-//     }, 3500);
-//   }
-// });
-
 function renderResultCard(result) {
   const card = document.createElement("div");
   card.className = "result-card";
@@ -326,55 +208,58 @@ function renderResultCard(result) {
 }
 
 compareBtn.addEventListener("click", async () => {
-    // 1. Detect Source (Left Side)
     const isClientSource = clientDatasetCheckbox.checked;
     const sourceCategory = isClientSource ? "CLIENT" : "UPLOAD";
 
-    // 2. Detect Target (Right Side)
     const isClientTarget = clientDatasetRightCheckbox.checked;
     const targetType = isClientTarget ? "CLIENT" : "MYIPO";
 
-    // Labels for UI
-    const leftLabel = isClientSource ? "Client Dataset" : "Uploaded File";
-    const rightLabel = isClientTarget ? "Client Dataset" : "MYIPO Journals";
-
-    // Validation for Upload mode
     if (!isClientSource && fileInputUpload.files.length === 0) {
         showPopup("Please upload a file first!", true);
         return;
     }
 
-    // UI Setup
     const loadingSection = document.getElementById("loadingSection");
     const resultsSection = document.getElementById("resultsSection");
     const progressFill = document.querySelector(".progress-fill");
-    const comparisonInfo = document.getElementById("comparisonInfo");
 
+    resultsGrid.innerHTML = "";
     resultsSection.classList.remove("show");
     loadingSection.classList.add("show");
-    progressFill.style.width = "0%";
-    resultsGrid.innerHTML = "";
-    comparisonInfo.textContent = `Comparing ${leftLabel} with ${rightLabel}`;
+    progressFill.style.width = "30%";
 
-    // Prepare Data
     const formData = new FormData();
     if (!isClientSource) {
-        formData.append('file', fileInputUpload.files[0]);
+        formData.append("file", fileInputUpload.files[0]);
     }
-    formData.append('source_category', sourceCategory); // "CLIENT" or "UPLOAD"
-    formData.append('target', targetType);             // "CLIENT" or "MYIPO"
+    formData.append("source_category", sourceCategory);
+    formData.append("target", targetType);
 
     try {
-        const response = await fetch('/api/perform_comparison', {
-            method: 'POST',
+        const response = await fetch("/api/perform_comparison", {
+            method: "POST",
             body: formData
         });
-        
-        const newResults = await response.json();
-        if (newResults.error) throw new Error(newResults.error);
 
-        // ... (Keep your existing interval/progress and rendering logic) ...
-        // Your existing renderResultCard(match) will work perfectly here.
+        const results = await response.json();
+
+        if (!response.ok || results.error) {
+            throw new Error(results.error || "Comparison failed");
+        }
+
+        loadingSection.classList.remove("show");
+        resultsSection.classList.add("show");
+
+        // IMAGE upload
+        if (Array.isArray(results) && results.length && !results[0].matches) {
+            results.forEach(renderResultCard);
+        }
+        // PDF / CLIENT
+        else {
+            results.forEach(group => {
+                group.matches.forEach(renderResultCard);
+            });
+        }
 
     } catch (error) {
         loadingSection.classList.remove("show");
@@ -441,17 +326,30 @@ updateButtonState();
 //   detailModal.classList.add("show");
 // }
 function openDetailModal(data) {
+  console.log("Modal Data Received:", data);
+
+  // 1. Image & Company Name (These are working)
   document.getElementById("modalImage").src = `/logo/${data.id}`;
-  document.getElementById("modalCompanyName").textContent = data.label;
+  document.getElementById("modalCompanyName").textContent = data.label || "N/A";
+
+  // 2. Similarities (These are working)
   document.getElementById("modalImageSim").textContent = `${data.imgSim}%`;
   document.getElementById("modalTextSim").textContent = `${data.textSim}%`;
-  document.getElementById("modalTrademarkNum").textContent = data.modalTrademarkNum;
-  document.getElementById("modalDescription").textContent = data.modalDescription;
-  
-  // Clear the placeholder matches list
-  const matchesList = document.getElementById("modalMatchesList");
-  if(matchesList) matchesList.innerHTML = "<p style='color:#ccc'>Individual record view</p>";
 
+  // 3. FIX: Trademark Number
+  // The console shows the key is called 'modalTrademarkNum'
+  document.getElementById("modalTrademarkNum").textContent = data.modalTrademarkNum || "N/A";
+
+  // 4. Class & Agent (These are working)
+  document.getElementById("modalClass").textContent = data.modalClass || "N/A";
+  document.getElementById("modalAgent").textContent = data.modalAgent || "N/A";
+
+  // 5. FIX: Description 
+  // The console shows the key is called 'modalDescription'
+  document.getElementById("modalDescription").textContent = data.modalDescription || "N/A";
+
+  // 6. Show the modal
+  const detailModal = document.getElementById("detailModal");
   detailModal.classList.add("show");
 }
 
@@ -462,8 +360,53 @@ function closeDetailModal() {
 modalClose.addEventListener("click", closeDetailModal);
 detailModal.addEventListener("click", (e) => { if (e.target === detailModal) closeDetailModal(); });
 
-document.getElementById("modalDownload").addEventListener("click", () => {
-  showPopup("📄 Downloading report...");
+// Need do this to generate report
+// document.getElementById("modalDownload").addEventListener("click", () => {
+//   showPopup("📄 Downloading report...");
+// });
+document.getElementById("modalDownload").addEventListener("click", function() {
+    // 1. Gather all data currently in the modal
+    // We get the ID from the logo URL (e.g., /logo/26145)
+    const logoSrc = document.getElementById("modalImage").src;
+    const trademarkId = logoSrc.split('/').pop();
+
+    const reportData = {
+        id: trademarkId,
+        label: document.getElementById("modalCompanyName").textContent,
+        imgSim: document.getElementById("modalImageSim").textContent.replace('%', ''),
+        textSim: document.getElementById("modalTextSim").textContent.replace('%', ''),
+        serial: document.getElementById("modalTrademarkNum").textContent,
+        modalClass: document.getElementById("modalClass").textContent,
+        modalAgent: document.getElementById("modalAgent").textContent,
+        description: document.getElementById("modalDescription").textContent
+    };
+
+    showPopup("📄 Generating professional PDF report...");
+
+    // 2. Send to backend
+    fetch('/api/generate_pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reportData)
+    })
+    .then(response => {
+        if (!response.ok) throw new Error("PDF generation failed");
+        return response.blob();
+    })
+    .then(blob => {
+        // 3. Trigger actual browser download
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Trademark_Report_${reportData.serial}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    })
+    .catch(err => {
+        console.error(err);
+        showPopup("❌ Error generating PDF");
+    });
 });
 
 document.querySelectorAll('.match-badge').forEach(badge => {
@@ -477,4 +420,4 @@ document.querySelectorAll('.match-badge').forEach(badge => {
   }
 });
 
-console.log("Comparison Results:", newResults);
+

@@ -16,10 +16,14 @@ from flask import abort
 from flask import request, jsonify
 import traceback
 import re
-# Import your updated database functions and the Perfect Extractor
 import database as db 
 from ml_utils import MLModel
-from pdf_extractor import extract_all # This must be the stateful extractor we discussed
+from pdf_extractor import extract_all 
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+
 
 app = Flask(__name__)
 app.secret_key = 'a_secure_random_secret_key'
@@ -416,7 +420,6 @@ def search():
 
 @app.route('/api/text_search', methods=['POST'])
 def api_text_search():
-    # Support both JSON (headers) and Form Data (fetch)
     if request.is_json:
         data = request.get_json()
         words = data.get('words', '')
@@ -425,9 +428,12 @@ def api_text_search():
         words = request.form.get('words', '')
         class_filter = request.form.get('class_filter', '')
 
+    # HARD CLEAN
+    words = re.sub(r'\s+', '', words)
+
+    print("CLEAN WORDS:", repr(words))
+
     results = db.search_trademarks(words=words, class_filter=class_filter)
-    
-    # This turns the database rows into JSON-ready format
     return jsonify([dict(row) for row in results])
 
 
@@ -533,171 +539,219 @@ def compare():
 #         print("❌ No query items extracted")
 #         return jsonify([])
 
+
 @app.route('/api/perform_comparison', methods=['POST'])
 def perform_comparison():
-    # 1. Get Parameters from Frontend
+    import io
+    import numpy as np
+    import faiss
+    import psycopg2.extras
+    from PIL import Image
+
     file = request.files.get('file')
-    source_category = request.form.get('source_category', 'UPLOAD').upper() 
+    source_category = request.form.get('source_category', 'UPLOAD').upper()
     target = request.form.get('target', 'MYIPO').upper()
 
-    # Configuration Constants
-    DEBUG = True
-    TEXT_DIM = 384
-    IMG_DIM = 512
-
-    if DEBUG:
-        print("\n================ COMPARISON START ================")
-        print(f"Source: {source_category} | Target: {target}")
-
-    # =================================================
-    # 2. DEFINE QUERY ITEMS (The "Left Side")
-    # =================================================
-    query_items = []
-    input_type = "PDF" # Default to batch/PDF style results
-
-    if source_category == 'UPLOAD':
-        if not file:
-            return jsonify({'error': 'No file uploaded'}), 400
-        
-        filename = file.filename.lower()
-        if filename.endswith('.pdf'):
-            query_items = extract_all(io.BytesIO(file.read()))
-            input_type = "PDF"
-        else:
-            query_items = [{
-                'serial_number': 'IMAGE_UPLOAD',
-                'trademark_name': request.form.get('words', '').strip(),
-                'description': '',
-                'logo_data': file.read()
-            }]
-            input_type = "IMAGE"
-    else:
-        # SOURCE IS CLIENT DATASET (Fetch from Database)
-        # You need to ensure get_query_items_by_category exists in database.py
-        query_items = db.get_query_items_by_category(source_category)
-        input_type = "PDF" 
-
-    if not query_items:
-        print(f"❌ No query items found for source: {source_category}")
-        return jsonify({'error': 'Source dataset is empty'}), 400
-
-    # =================================================
-    # 3. LOAD TARGET DATABASE EMBEDDINGS (The "Right Side")
-    # =================================================
+    # 1. LOAD TARGET DATA (FAISS INDEX)
     db_data = db.get_all_embeddings(category=target)
-
     if not db_data['ids']:
-        print(f"❌ No embeddings found for target category: {target}")
-        return jsonify({'error': f'Target database ({target}) is empty'}), 400
+        return jsonify({'error': 'Target database empty'}), 400
 
-    # Build FAISS Indices for the target
     db_logo_vectors = np.vstack(db_data['logo']).astype('float32')
     db_text_vectors = np.vstack(db_data['text']).astype('float32')
-
     faiss.normalize_L2(db_logo_vectors)
     faiss.normalize_L2(db_text_vectors)
 
-    image_index = faiss.IndexFlatIP(IMG_DIM)
-    text_index = faiss.IndexFlatIP(TEXT_DIM)
-
+    image_index = faiss.IndexFlatIP(512)
+    text_index = faiss.IndexFlatIP(384)
     image_index.add(db_logo_vectors)
     text_index.add(db_text_vectors)
 
-    # =================================================
-    # 4. SEARCH LOOP
-    # =================================================
+    # 2. EXTRACT QUERY ITEMS (LEFT SIDE)
+    query_items = []
+    if source_category == 'UPLOAD':
+        if not file: return jsonify({'error': 'No file'}), 400
+        file_bytes = file.read()
+        if file.filename.lower().endswith('.pdf'):
+            query_items = extract_all(io.BytesIO(file_bytes))
+        else:
+            query_items = [{
+                'serial_number': 'UPLOAD', 
+                'trademark_name': request.form.get('words',''), 
+                'description': '',
+                'logo_data': file_bytes
+            }]
+    else:
+        query_items = db.get_query_items_by_category(source_category)
+
+    if not query_items:
+        return jsonify([])
+
+    # 3. BATCH AI INFERENCE (The "Speed Boost")
+    # Prepare lists for batch processing
+    all_texts = []
+    all_logo_images = []
+    logo_mapping = [] # Tracks which query_item owns which logo
+
+    for i, q in enumerate(query_items):
+        txt = f"{q.get('trademark_name','') or ''} {q.get('description','') or ''}".strip()
+        all_texts.append(txt if txt else "n/a")
+        
+        if q.get('logo_data'):
+            try:
+                img = Image.open(io.BytesIO(q['logo_data'])).convert("RGB")
+                all_logo_images.append(img)
+                logo_mapping.append(i)
+            except: pass
+
+    # Run Text Batch
+    print(f"--- Batch processing {len(all_texts)} texts ---")
+    text_embeddings = ml_model.text_model.encode(all_texts, batch_size=32, convert_to_numpy=True)
+    faiss.normalize_L2(text_embeddings)
+    D_text, I_text = text_index.search(text_embeddings.astype('float32'), 20)
+
+    # Run Logo Batch
+    logo_results = {} # Index -> (sims, idxs)
+    if all_logo_images:
+        print(f"--- Batch processing {len(all_logo_images)} logos ---")
+        logo_embeddings = ml_model.image_model.encode(all_logo_images, batch_size=32, convert_to_numpy=True)
+        faiss.normalize_L2(logo_embeddings)
+        D_logo, I_logo = image_index.search(logo_embeddings.astype('float32'), 20)
+        
+        for i, query_idx in enumerate(logo_mapping):
+            logo_results[query_idx] = (D_logo[i], I_logo[i])
+
+    # 4. SCORING & FINAL FORMATTING
     final_results = []
     conn = db.get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    for q in query_items:
-        # ---------------- TEXT SEARCH ----------------
-        q_text = f"{q.get('trademark_name', '')} {q.get('description', '')}".strip()
-        q_text_emb = ml_model.generate_text_embedding(q_text).reshape(1, -1)
-        faiss.normalize_L2(q_text_emb)
-        t_sims, t_idxs = text_index.search(q_text_emb, 20)
+    for i, q in enumerate(query_items):
+        # Merge candidate IDs from both text and logo search
+        candidate_ids = set()
+        for idx in I_text[i]:
+            if idx != -1: candidate_ids.add(db_data['ids'][idx])
+        
+        if i in logo_results:
+            for idx in logo_results[i][1]:
+                if idx != -1: candidate_ids.add(db_data['ids'][idx])
 
-        # ---------------- IMAGE SEARCH ----------------
-        l_sims, l_idxs = None, None
-        if q.get('logo_data'):
-            # Check if logo_data is bytes (from DB) or a file stream (from upload)
-            logo_source = io.BytesIO(q['logo_data']) if isinstance(q['logo_data'], (bytes, bytearray)) else q['logo_data']
-            q_logo_emb = ml_model.generate_image_embedding(logo_source)
-            if q_logo_emb is not None:
-                q_logo_emb = q_logo_emb.reshape(1, -1)
-                faiss.normalize_L2(q_logo_emb)
-                l_sims, l_idxs = image_index.search(q_logo_emb, 20)
+        if not candidate_ids: continue
 
-        # ---------------- MERGE CANDIDATES ----------------
-        candidates = {}
-        for i, idx in enumerate(t_idxs[0]):
-            if idx == -1: continue
-            db_id = db_data['ids'][idx]
-            candidates[db_id] = {'text': float(t_sims[0][i]), 'image': 0.0}
+        # Single Bulk Fetch for this specific Query Item
+        cur.execute("""
+            SELECT id, trademark_name, serial_number, applicant_name, description, class_indices, agent_details
+            FROM trademarks WHERE id = ANY(%s)
+        """, (list(candidate_ids),))
+        db_rows = {row['id']: row for row in cur.fetchall()}
 
-        if l_idxs is not None:
-            for i, idx in enumerate(l_idxs[0]):
-                if idx == -1: continue
-                db_id = db_data['ids'][idx]
-                candidates.setdefault(db_id, {'text': 0.0, 'image': 0.0})
-                candidates[db_id]['image'] = float(l_sims[0][i])
-
-        # ---------------- SCORING ----------------
         match_list = []
-        q_name_upper = q.get('trademark_name', '').upper()
+        q_name = (q.get('trademark_name') or "").upper()
 
-        for db_id, sims in candidates.items():
-            cur.execute("""
-                SELECT trademark_name, serial_number, applicant_name, 
-                       description, class_indices, agent_details
-                FROM trademarks WHERE id = %s
-            """, (db_id,))
-            row = cur.fetchone()
+        for db_id in candidate_ids:
+            row = db_rows.get(db_id)
             if not row: continue
 
-            db_name_upper = (row['trademark_name'] or "").upper()
-            literal = 0.0
-            if q_name_upper and db_name_upper:
-                if q_name_upper == db_name_upper: literal = 1.0
-                elif q_name_upper in db_name_upper: literal = 0.8
+            # Extract similarity scores from the batch results
+            t_sim = 0.0
+            t_row_ids = [db_data['ids'][x] for x in I_text[i]]
+            if db_id in t_row_ids:
+                t_sim = float(D_text[i][t_row_ids.index(db_id)])
 
-            # Formula based on input type
-            if input_type == "IMAGE":
-                total = (sims['image'] * 0.8) + (sims['text'] * 0.2)
-            else:
-                total = (literal * 0.4) + (sims['text'] * 0.4) + (sims['image'] * 0.2)
+            l_sim = 0.0
+            if i in logo_results:
+                l_row_ids = [db_data['ids'][x] for x in logo_results[i][1]]
+                if db_id in l_row_ids:
+                    l_sim = float(logo_results[i][0][l_row_ids.index(db_id)])
 
-            if total >= 0.40:
+            # Exact name match bonus
+            db_name = (row['trademark_name'] or "").upper()
+            literal = 1.0 if q_name and q_name == db_name else (0.7 if q_name and q_name in db_name else 0.0)
+
+            total = (literal * 0.4) + (t_sim * 0.4) + (l_sim * 0.2)
+
+            if total >= 0.38:
                 match_list.append({
                     'id': db_id,
                     'serial': row['serial_number'],
                     'label': row['applicant_name'],
                     'totalSim': round(total * 100, 2),
-                    'textSim': round(max(literal, sims['text']) * 100, 2),
-                    'imgSim': round(sims['image'] * 100, 2),
+                    'textSim': round(max(literal, t_sim) * 100, 2),
+                    'imgSim': round(l_sim * 100, 2),
                     'description': row['description'],
                     'modalClass': row['class_indices'],
                     'modalAgent': row['agent_details']
                 })
 
         match_list = sorted(match_list, key=lambda x: x['totalSim'], reverse=True)[:5]
-
-        if input_type == "PDF" or source_category == "CLIENT":
-            final_results.append({
-                'query_serial': q.get('serial_number') or q.get('trademark_name'),
-                'matches': match_list
-            })
-        else:
-            # Single image upload returns a flat list
-            final_results = match_list
+        final_results.append({
+            'query_serial': q.get('serial_number') or q.get('trademark_name'),
+            'matches': match_list
+        })
 
     cur.close()
     conn.close()
-    print("================ COMPARISON END =================\n")
     return jsonify(final_results)
 
+# ===============================================================================================
+# DOWNLOAD REPORT AS PDF FORMAT
+# ===============================================================================================
+@app.route('/api/generate_pdf', methods=['POST'])
+def generate_pdf():
+    data = request.get_json()
+    trademark_id = data.get('id')
+    
+    # Fetch original logo from DB
+    logo_bytes = db.get_logo(trademark_id)
+    
+    # Create PDF in memory
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    styles = getSampleStyleSheet()
+    elements = []
 
+    # 1. Header
+    elements.append(Paragraph(f"Trademark Analysis Report", styles['Title']))
+    elements.append(Spacer(1, 12))
 
+    # 2. Add Logo Image
+    if logo_bytes:
+        img_data = io.BytesIO(logo_bytes)
+        img = Image(img_data, width=150, height=150)
+        img.hAlign = 'LEFT'
+        elements.append(img)
+    
+    elements.append(Spacer(1, 20))
+
+    # 3. Main Info Table
+    table_data = [
+        [Paragraph("<b>Trademark Name:</b>", styles['Normal']), data.get('label')],
+        [Paragraph("<b>Serial Number:</b>", styles['Normal']), data.get('serial')],
+        [Paragraph("<b>Class:</b>", styles['Normal']), data.get('modalClass')],
+        [Paragraph("<b>Agent:</b>", styles['Normal']), data.get('modalAgent')],
+        [Paragraph("<b>Image Similarity:</b>", styles['Normal']), f"{data.get('imgSim')}%"],
+        [Paragraph("<b>Text Similarity:</b>", styles['Normal']), f"{data.get('textSim')}%"],
+    ]
+    
+    t = Table(table_data, colWidths=[120, 350])
+    t.setStyle(TableStyle([
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+        ('PADDING', (0,0), (-1,-1), 6),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+    ]))
+    elements.append(t)
+    elements.append(Spacer(1, 20))
+
+    # 4. Description
+    elements.append(Paragraph("<b>Description:</b>", styles['Heading3']))
+    elements.append(Paragraph(data.get('description', 'N/A'), styles['Normal']))
+
+    # Build and Return
+    doc.build(elements)
+    buffer.seek(0)
+    
+    filename = f"Report_{data.get('serial')}.pdf"
+    return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
 # ===============================================================================================
 # IMAGE SERVING (LOGOS & LEGAL EVIDENCE)
 # ===============================================================================================

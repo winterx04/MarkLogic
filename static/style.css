@@ -2548,21 +2548,42 @@ input[type="date"]:hover {
   position: absolute;
   top: 20px;
   right: 60px;
-  display: flex;
+  
+  /* Use inline-flex so it only takes up as much space as the content inside */
+  display: inline-flex; 
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  background: #f6f7f8;
-  color: #111;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 8px 14px;
-  font-size: 0.9rem;
-  font-weight: 500;
+  
+  /* Constrain the size */
+  padding: 6px 12px;
+  height: 36px; /* Explicit height prevents it from growing huge */
+  min-width: 140px; 
+  
+  background: #ffffff;
+  color: #333;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  
+  font-size: 0.85rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.25s ease;
+  white-space: nowrap; /* Prevents text from wrapping to a second line */
+  transition: all 0.2s ease;
 }
+
 .detail-modal-download:hover {
-  background: #ececec;
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+/* Ensure the icon inside isn't huge */
+.detail-modal-download svg, 
+.detail-modal-download img,
+.detail-modal-download i {
+  width: 16px !important;
+  height: 16px !important;
 }
 
 /* --- Layout --- */

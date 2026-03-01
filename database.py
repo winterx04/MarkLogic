@@ -302,8 +302,7 @@ def delete_trademark_by_id(trademark_id):
 def search_trademarks(words=None, class_filter=None, id_list=None):
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    
-    # We must select all these columns for the search.js to see them!
+
     query = """
         SELECT id, 
                serial_number, 
@@ -314,34 +313,43 @@ def search_trademarks(words=None, class_filter=None, id_list=None):
                (logo_data IS NOT NULL) as has_logo 
         FROM trademarks
     """
-    
+    # Allow Serial Number Search
     where_clauses = []
     params = []
-    
+
     if words and words.strip():
-        term = f"%{words.strip()}%"
-        # Search in name, applicant, and description
-        where_clauses.append("(trademark_name ILIKE %s OR applicant_name ILIKE %s OR description ILIKE %s)")
-        params.extend([term, term, term])
-        
+        clean_words = words.strip().replace(" ", "")
+        term = f"%{clean_words}%"
+
+        where_clauses.append("""
+        (
+            trademark_name ILIKE %s
+        OR applicant_name ILIKE %s
+        OR REGEXP_REPLACE(serial_number, '\\s+', '', 'g') ILIKE %s
+        OR description ILIKE %s
+        )
+        """)
+        params.extend([term, term, term, term])
+
     if class_filter and class_filter.strip():
-        where_clauses.append("class_indices ~ %s")
-        params.append(f'\\y{class_filter.strip()}\\y')
-        
+        where_clauses.append("class_indices ILIKE %s")
+        params.append(f"%{class_filter.strip()}%")
+
     if id_list:
         where_clauses.append("id = ANY(%s)")
         params.append(id_list)
-        
+
     if where_clauses:
         query += " WHERE " + " AND ".join(where_clauses)
-    
+
     query += " ORDER BY id DESC"
-    
+
     cur.execute(query, tuple(params))
     trademarks = cur.fetchall()
-    cur.close(); conn.close()
-    return trademarks
+    cur.close()
+    conn.close()
 
+    return trademarks
 # ==============================================================================
 # GET QUERY (COMPARE)
 # ==============================================================================
