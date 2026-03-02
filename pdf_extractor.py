@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image
 import pdfplumber
 
+
 # Optional dependencies
 try:
     import cv2
@@ -40,7 +41,12 @@ except Exception:
     SentenceTransformer = None
     _HAS_SENTE_TRANS = False
 
-
+# Progress bar for extraction 
+try:
+    from tqdm import tqdm
+    _HAS_TQDM = True
+except ImportError:
+    _HAS_TQDM = False
 # -------------------------
 # MLModel
 # -------------------------
@@ -660,18 +666,39 @@ class UltraRobustExtractor:
 
         return result
 
-    def extract_all(self, pdf_stream, start_page=9):
+    def extract_all(self, pdf_stream, start_page=4):
         results = []
         with pdfplumber.open(pdf_stream) as pdf:
-            for pnum, page in enumerate(pdf.pages[start_page - 1:], start=start_page):
+            total_pdf_pages = len(pdf.pages)
+            pages_to_process = pdf.pages[start_page - 1:]
+            
+            print(f"--- Starting Extraction ---")
+            print(f"Total Pages in PDF: {total_pdf_pages}")
+            print(f"Processing from page {start_page} to {total_pdf_pages}...")
+
+            # Wrap the loop with tqdm for a visual progress bar
+            # If tqdm isn't installed, it falls back to a basic range
+            iterator = enumerate(pages_to_process, start=start_page)
+            if _HAS_TQDM:
+                iterator = tqdm(iterator, total=len(pages_to_process), desc="Extracting", unit="pg")
+
+            for pnum, page in iterator:
                 try:
                     blocks = self.find_blocks(page)
                     for block in blocks:
                         data = self.extract_from_block(page, block, pnum)
                         if data:
                             results.append(data)
+                    
+                    # If not using tqdm, print a simple status line
+                    if not _HAS_TQDM and pnum % 5 == 0:
+                        print(f"Currently on page {pnum}...")
+
                 except Exception as e:
                     self.log(f"❌ Page {pnum} failed: {e}")
+            
+            print(f"\n--- Extraction Complete ---")
+            print(f"Total Records Found: {len(results)}")
         return results
 
 

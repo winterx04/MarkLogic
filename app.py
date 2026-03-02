@@ -477,68 +477,6 @@ def api_image_search():
 def compare():
     return render_template('compare.html')
 
-# @app.route('/api/perform_comparison', methods=['POST'])
-# def perform_comparison():
-#     file = request.files.get('file')
-#     if not file:
-#         return jsonify({'error': 'No file uploaded'}), 400
-
-#     # ---------------- CONFIG ----------------
-#     DEBUG = True
-#     TEXT_DIM = 384
-#     IMG_DIM = 512
-
-#     target = request.form.get('target', 'MYIPO').upper()
-#     filename = file.filename.lower()
-
-#     if DEBUG:
-#         print("\n================ COMPARISON START ================")
-#         print("Target category:", target)
-#         print("Filename:", filename)
-
-#     # =================================================
-#     # 1. LOAD DATABASE EMBEDDINGS
-#     # =================================================
-#     db_data = db.get_all_embeddings(category=target)
-
-#     if not db_data['ids']:
-#         print("❌ No embeddings found for category:", target)
-#         return jsonify({'error': 'Database is empty for this category'}), 400
-
-#     db_logo_vectors = np.vstack(db_data['logo']).astype('float32')
-#     db_text_vectors = np.vstack(db_data['text']).astype('float32')
-
-#     faiss.normalize_L2(db_logo_vectors)
-#     faiss.normalize_L2(db_text_vectors)
-
-#     image_index = faiss.IndexFlatIP(IMG_DIM)
-#     text_index = faiss.IndexFlatIP(TEXT_DIM)
-
-#     image_index.add(db_logo_vectors)
-#     text_index.add(db_text_vectors)
-
-#     if DEBUG:
-#         print(f"✔ Loaded {len(db_data['ids'])} DB trademarks")
-
-#     # =================================================
-#     # 2. INPUT TYPE (PDF or IMAGE)
-#     # =================================================
-#     if filename.endswith('.pdf'):
-#         query_items = extract_all(io.BytesIO(file.read()))
-#         input_type = "PDF"
-#     else:
-#         query_items = [{
-#             'serial_number': 'IMAGE_UPLOAD',
-#             'trademark_name': request.form.get('words', '').strip(),
-#             'description': '',
-#             'logo_data': file.read()
-#         }]
-#         input_type = "IMAGE"
-
-#     if not query_items:
-#         print("❌ No query items extracted")
-#         return jsonify([])
-
 
 @app.route('/api/perform_comparison', methods=['POST'])
 def perform_comparison():
@@ -652,7 +590,6 @@ def perform_comparison():
             row = db_rows.get(db_id)
             if not row: continue
 
-            # Extract similarity scores from the batch results
             t_sim = 0.0
             t_row_ids = [db_data['ids'][x] for x in I_text[i]]
             if db_id in t_row_ids:
@@ -664,13 +601,24 @@ def perform_comparison():
                 if db_id in l_row_ids:
                     l_sim = float(logo_results[i][0][l_row_ids.index(db_id)])
 
-            # Exact name match bonus
             db_name = (row['trademark_name'] or "").upper()
             literal = 1.0 if q_name and q_name == db_name else (0.7 if q_name and q_name in db_name else 0.0)
 
-            total = (literal * 0.4) + (t_sim * 0.4) + (l_sim * 0.2)
+            # NEW DYNAMIC SCORING LOGIC
+            if q.get('logo_data') and not q_name:
+                # If user ONLY uploaded an image (like your screenshot)
+                total = l_sim 
+                threshold = 0.35 # Lower threshold for pure visual search
+            elif q_name and not q.get('logo_data'):
+                # If user ONLY provided text
+                total = max(literal, t_sim)
+                threshold = 0.40
+            else:
+                # Combined search (Both text and image exist)
+                total = (max(literal, t_sim) * 0.6) + (l_sim * 0.4)
+                threshold = 0.38
 
-            if total >= 0.38:
+            if total >= threshold:
                 match_list.append({
                     'id': db_id,
                     'serial': row['serial_number'],
