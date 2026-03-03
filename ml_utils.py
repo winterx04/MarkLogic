@@ -5,7 +5,7 @@ from PIL import Image
 import database as db
 
 class MLModel:
-    def __init__(self, image_model_name='clip-ViT-B-32', text_model_name='all-MiniLM-L6-v2'):
+    def __init__(self, image_model_name='clip-ViT-B-16', text_model_name='all-MiniLM-L6-v2'):
         print("Loading ML models...")
         # CLIP for images (512 dimensions)
         self.image_model = SentenceTransformer(image_model_name)
