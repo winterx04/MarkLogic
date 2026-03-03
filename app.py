@@ -266,10 +266,12 @@ def change_password():
 # ===============================================================================================
 
 @app.route('/dataset')
+@admin_required
 def dataset():
     return render_template('dataset.html')
 
 @app.route('/client-dataset')
+@admin_required
 def client_dataset():
     return render_template('client-dataset.html')
 
@@ -349,7 +351,6 @@ def upload_journal(category):
 # GET /api/trademarks  -> list or search (query params: batch_number, batch_year, q, class)
 @app.route('/api/trademarks', methods=['GET'])
 def api_trademarks():
-    # allow only logged in users to fetch 
     if not session.get('logged_in'):
         return jsonify({'success': False, 'message': 'Authentication required.'}), 401
 
@@ -358,22 +359,31 @@ def api_trademarks():
     q = request.args.get('q')
     class_filter = request.args.get('class')
 
-    # If search params exist use search_trademarks, else return all
-    if q or class_filter:
+    # FIX: Check for batch and year filters specifically
+    if batch or year:
+        # Assuming your database.py has a function that can filter by these.
+        # If not, you may need to use db.search_trademarks or a custom filter.
+        rows = db.search_trademarks(batch_number=batch, batch_year=year)
+    elif q or class_filter:
         rows = db.search_trademarks(words=q, class_filter=class_filter)
     else:
         rows = db.get_all_trademarks()
 
     results = []
     for row in rows:
-        r = dict(row)  # DictCursor -> dict
-        # Build a friendly display name
+        r = dict(row)
+        
+        # FIX: Friendly display name logic (Validation)
+        # If a real filename exists (like .png or .jpg), use it. 
+        # Only fallback to .pdf if it's a MYIPO category and we lack a filename.
         if r.get('file_name'):
             display_name = r.get('file_name')
         elif r.get('batch_number') and r.get('batch_year'):
-            display_name = f"{r.get('batch_number')}/{r.get('batch_year')}.pdf"
+            # Only use .pdf if the category is actually MYIPO (usually journals)
+            ext = ".pdf" if r.get('category') == 'MYIPO' else ""
+            display_name = f"Batch {r.get('batch_number')}/{r.get('batch_year')}{ext}"
         else:
-            display_name = r.get('serial_number') or f"id-{r.get('id')}"
+            display_name = r.get('serial_number') or f"ID: {r.get('id')}"
 
         results.append({
             'id': r.get('id'),

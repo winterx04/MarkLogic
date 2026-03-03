@@ -71,23 +71,25 @@
             </a>
 
             <!-- Menu Card 3: href="#" is fine since it's controlled by JS -->
-            <a href="#" class="menu-card" id="datasetMenuCard">
-                <div class="menu-icon">
-                    <img src="{{ url_for('static', filename='icons/dataset.png') }}" alt="Dataset Icon">
-                </div>
-                <div class="menu-content">
-                    <h3 class="menu-title">Dataset</h3>
-                    <p class="menu-description">
-                        Upload new trademark journals to keep the system updated with the latest information.
-                    </p>
-                </div>
-                <div class="menu-arrow">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M5 12h14M12 5l7 7-7 7"/>
-                    </svg>
-                </div>
-            </a>
-
+            {% if session.get('role') and session.get('role').lower() in ['admin', 'manager'] %}
+                <a href="#" class="menu-card" id="datasetMenuCard">
+                    <div class="menu-icon">
+                        <img src="{{ url_for('static', filename='icons/dataset.png') }}" alt="Dataset Icon">
+                    </div>
+                    <div class="menu-content">
+                        <h3 class="menu-title">Dataset</h3>
+                        <p class="menu-description">
+                            Upload new trademark journals to keep the system updated with the latest information.
+                        </p>
+                    </div>
+                    <div class="menu-arrow">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M5 12h14M12 5l7 7-7 7"/>
+                        </svg>
+                    </div>
+                </a>
+            {% endif %}
+            
             <!-- --- NEW CONDITIONAL BLOCK for Admin Card --- -->
             {% if session.role and session.role.lower() == 'admin' %}
                 <!-- Menu Card 4 (Only shown to admins) -->
