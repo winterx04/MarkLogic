@@ -477,15 +477,78 @@ def api_image_search():
 def compare():
     return render_template('compare.html')
 
+# Test Starts Here 3/3/2026 
+#
+#
+#
+#
+#
+
+import io
+import numpy as np
+import faiss
+import psycopg2.extras
+from PIL import Image
+
+# ==========================================
+# 辅助函数：智能读取并只截取左侧 Logo
+# 放在路由函数上方
+# ==========================================
+def extract_logo_from_bytes(img_bytes, white_thresh=240):
+    try:
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        arr = np.array(img)
+        mask = np.any(arr < white_thresh, axis=2)
+        col_sums = np.sum(mask, axis=0)
+        
+        w = img.width
+        start_scan = int(w * 0.15)
+        end_scan = int(w * 0.85)
+        
+        max_gap_len = 0
+        max_gap_start = 0
+        current_gap_len = 0
+        current_gap_start = 0
+
+        for x in range(start_scan, end_scan):
+            if col_sums[x] == 0:
+                if current_gap_len == 0: current_gap_start = x
+                current_gap_len += 1
+            else:
+                if current_gap_len > max_gap_len:
+                    max_gap_len = current_gap_len
+                    max_gap_start = current_gap_start
+                current_gap_len = 0
+
+        if current_gap_len > max_gap_len:
+            max_gap_start = current_gap_start
+
+        # 智能判定：如果找到了明显的垂直空白区(>15像素宽)，说明是带描述的截图，切除右侧！
+        # 如果没有明显缝隙，说明用户上传的本身就是一张纯 Logo，保持原样。
+        if max_gap_len > 15:
+            left_img = img.crop((0, 0, max_gap_start, img.height))
+        else:
+            left_img = img
+
+        # 紧密贴边裁剪 (Tight Crop)
+        left_arr = np.array(left_img)
+        left_mask = np.any(left_arr < white_thresh, axis=2)
+        if left_mask.any():
+            ys, xs = np.where(left_mask)
+            tight_crop = left_img.crop((xs.min(), ys.min(), xs.max() + 1, ys.max() + 1))
+        else:
+            tight_crop = left_img
+
+        buf = io.BytesIO()
+        tight_crop.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception as e:
+        print(f"⚠️ 智能提取 Logo 失败 (Fallback 到原图): {e}")
+        return img_bytes
+
 
 @app.route('/api/perform_comparison', methods=['POST'])
 def perform_comparison():
-    import io
-    import numpy as np
-    import faiss
-    import psycopg2.extras
-    from PIL import Image
-
     file = request.files.get('file')
     source_category = request.form.get('source_category', 'UPLOAD').upper()
     target = request.form.get('target', 'MYIPO').upper()
@@ -509,38 +572,54 @@ def perform_comparison():
     query_items = []
     if source_category == 'UPLOAD':
         if not file: return jsonify({'error': 'No file'}), 400
+        
+        # ⚠️ 修复点 1：确保读取指针在开头，防止读到空数据
+        file.seek(0)
         file_bytes = file.read()
-        if file.filename.lower().endswith('.pdf'):
+        if len(file_bytes) == 0:
+            print("❌ 错误：接收到的文件大小为 0 字节！")
+            return jsonify({'error': 'Empty file received'}), 400
+
+        filename = file.filename.lower()
+        print(f"📥 收到上传文件: {filename}, 大小: {len(file_bytes)} bytes")
+        
+        if filename.endswith('.pdf'):
             query_items = extract_all(io.BytesIO(file_bytes))
-        else:
+        elif filename.endswith(('.png', '.jpg', '.jpeg', '.webp')):
+            # ⚠️ 修复点 2：自动切掉右侧文字只留 Logo
+            clean_logo_bytes = extract_logo_from_bytes(file_bytes)
             query_items = [{
-                'serial_number': 'UPLOAD', 
-                'trademark_name': request.form.get('words',''), 
+                'serial_number': 'IMAGE_UPLOAD',
+                'trademark_name': request.form.get('words', '').strip(),
                 'description': '',
-                'logo_data': file_bytes
+                'logo_data': clean_logo_bytes
             }]
+        else:
+            print("❌ 错误：不支持的文件格式")
+            return jsonify({'error': 'Unsupported file format'}), 400
     else:
         query_items = db.get_query_items_by_category(source_category)
 
     if not query_items:
         return jsonify([])
 
-    # 3. BATCH AI INFERENCE (The "Speed Boost")
-    # Prepare lists for batch processing
+    # 3. BATCH AI INFERENCE 
     all_texts = []
     all_logo_images = []
-    logo_mapping = [] # Tracks which query_item owns which logo
+    logo_mapping = [] 
 
     for i, q in enumerate(query_items):
         txt = f"{q.get('trademark_name','') or ''} {q.get('description','') or ''}".strip()
         all_texts.append(txt if txt else "n/a")
         
+        # ⚠️ 修复点 3：移除 pass，把真实的报错打印出来！
         if q.get('logo_data'):
             try:
                 img = Image.open(io.BytesIO(q['logo_data'])).convert("RGB")
                 all_logo_images.append(img)
                 logo_mapping.append(i)
-            except: pass
+            except Exception as e:
+                print(f"❌ 无法处理图片数据 (Index {i}): {e}")
 
     # Run Text Batch
     print(f"--- Batch processing {len(all_texts)} texts ---")
@@ -549,7 +628,7 @@ def perform_comparison():
     D_text, I_text = text_index.search(text_embeddings.astype('float32'), 20)
 
     # Run Logo Batch
-    logo_results = {} # Index -> (sims, idxs)
+    logo_results = {}
     if all_logo_images:
         print(f"--- Batch processing {len(all_logo_images)} logos ---")
         logo_embeddings = ml_model.image_model.encode(all_logo_images, batch_size=32, convert_to_numpy=True)
@@ -558,6 +637,8 @@ def perform_comparison():
         
         for i, query_idx in enumerate(logo_mapping):
             logo_results[query_idx] = (D_logo[i], I_logo[i])
+    else:
+        print("⚠️ 警告：没有成功加载任何 Logo 进入 AI 模型！")
 
     # 4. SCORING & FINAL FORMATTING
     final_results = []
@@ -565,18 +646,15 @@ def perform_comparison():
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
     for i, q in enumerate(query_items):
-        # Merge candidate IDs from both text and logo search
         candidate_ids = set()
         for idx in I_text[i]:
             if idx != -1: candidate_ids.add(db_data['ids'][idx])
-        
         if i in logo_results:
             for idx in logo_results[i][1]:
                 if idx != -1: candidate_ids.add(db_data['ids'][idx])
 
         if not candidate_ids: continue
 
-        # Single Bulk Fetch for this specific Query Item
         cur.execute("""
             SELECT id, trademark_name, serial_number, applicant_name, description, class_indices, agent_details
             FROM trademarks WHERE id = ANY(%s)
@@ -584,7 +662,10 @@ def perform_comparison():
         db_rows = {row['id']: row for row in cur.fetchall()}
 
         match_list = []
-        q_name = (q.get('trademark_name') or "").upper()
+        q_name = (q.get('trademark_name') or "").strip().upper()
+        
+        has_text = bool(q_name or q.get('description', '').strip())
+        has_image = i in logo_results
 
         for db_id in candidate_ids:
             row = db_rows.get(db_id)
@@ -592,31 +673,28 @@ def perform_comparison():
 
             t_sim = 0.0
             t_row_ids = [db_data['ids'][x] for x in I_text[i]]
-            if db_id in t_row_ids:
-                t_sim = float(D_text[i][t_row_ids.index(db_id)])
+            if db_id in t_row_ids: t_sim = float(D_text[i][t_row_ids.index(db_id)])
 
             l_sim = 0.0
-            if i in logo_results:
+            if has_image:
                 l_row_ids = [db_data['ids'][x] for x in logo_results[i][1]]
-                if db_id in l_row_ids:
-                    l_sim = float(logo_results[i][0][l_row_ids.index(db_id)])
+                if db_id in l_row_ids: l_sim = float(logo_results[i][0][l_row_ids.index(db_id)])
 
             db_name = (row['trademark_name'] or "").upper()
             literal = 1.0 if q_name and q_name == db_name else (0.7 if q_name and q_name in db_name else 0.0)
 
-            # NEW DYNAMIC SCORING LOGIC
-            if q.get('logo_data') and not q_name:
-                # If user ONLY uploaded an image (like your screenshot)
-                total = l_sim 
-                threshold = 0.35 # Lower threshold for pure visual search
-            elif q_name and not q.get('logo_data'):
-                # If user ONLY provided text
-                total = max(literal, t_sim)
-                threshold = 0.40
-            else:
-                # Combined search (Both text and image exist)
-                total = (max(literal, t_sim) * 0.6) + (l_sim * 0.4)
+            # 动态权重分配机制
+            if has_text and has_image:
+                total = (literal * 0.4) + (t_sim * 0.4) + (l_sim * 0.2)
                 threshold = 0.38
+            elif has_image and not has_text:
+                total = l_sim  
+                threshold = 0.50 
+            elif has_text and not has_image:
+                total = (literal * 0.5) + (t_sim * 0.5)
+                threshold = 0.38
+            else:
+                total, threshold = 0.0, 1.0
 
             if total >= threshold:
                 match_list.append({
@@ -632,14 +710,61 @@ def perform_comparison():
                 })
 
         match_list = sorted(match_list, key=lambda x: x['totalSim'], reverse=True)[:5]
-        final_results.append({
-            'query_serial': q.get('serial_number') or q.get('trademark_name'),
-            'matches': match_list
-        })
+        if match_list:
+            final_results.append({
+                'query_serial': q.get('serial_number') or q.get('trademark_name') or 'IMAGE_UPLOAD',
+                'matches': match_list
+            })
 
     cur.close()
     conn.close()
     return jsonify(final_results)
+
+# --- Replace your scoring loop with this ---  (Image Only)
+# for db_id in candidate_ids:
+#     row = db_rows.get(db_id)
+#     if not row: continue
+
+#     t_sim = 0.0
+#     t_row_ids = [db_data['ids'][x] for x in I_text[i]]
+#     if db_id in t_row_ids:
+#         t_sim = float(D_text[i][t_row_ids.index(db_id)])
+
+#     l_sim = 0.0
+#     if i in logo_results:
+#         l_row_ids = [db_data['ids'][x] for x in logo_results[i][1]]
+#         if db_id in l_row_ids:
+#             l_sim = float(logo_results[i][0][l_row_ids.index(db_id)])
+
+#     db_name = (row['trademark_name'] or "").upper()
+#     literal = 1.0 if q_name and q_name == db_name else (0.7 if q_name and q_name in db_name else 0.0)
+
+#     # NEW DYNAMIC SCORING LOGIC
+#     if q.get('logo_data') and not q_name:
+#         # If user ONLY uploaded an image (like your screenshot)
+#         total = l_sim 
+#         threshold = 0.35 # Lower threshold for pure visual search
+#     elif q_name and not q.get('logo_data'):
+#         # If user ONLY provided text
+#         total = max(literal, t_sim)
+#         threshold = 0.40
+#     else:
+#         # Combined search (Both text and image exist)
+#         total = (max(literal, t_sim) * 0.6) + (l_sim * 0.4)
+#         threshold = 0.38
+
+#     if total >= threshold:
+#         match_list.append({
+#             'id': db_id,
+#             'serial': row['serial_number'],
+#             'label': row['applicant_name'],
+#             'totalSim': round(total * 100, 2),
+#             'textSim': round(max(literal, t_sim) * 100, 2),
+#             'imgSim': round(l_sim * 100, 2),
+#             'description': row['description'],
+#             'modalClass': row['class_indices'],
+#             'modalAgent': row['agent_details']
+#         })
 
 # ===============================================================================================
 # DOWNLOAD REPORT AS PDF FORMAT
