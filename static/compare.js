@@ -269,48 +269,6 @@ updateVisualState();
 updateButtonState();
 
 // ===== DETAIL MODAL FUNCTIONALITY =====
-// const detailModal = document.getElementById("detailModal");
-// const modalClose = document.getElementById("modalClose");
-
-// function openDetailModal(data) {
-//   // 1. Update standard modal fields
-//   document.getElementById("modalImage").src = `/logo/${data.id}`;
-//   document.getElementById("modalCompanyName").textContent = data.label;
-//   document.getElementById("modalImageSim").textContent = `${data.imgSim}%`;
-//   document.getElementById("modalTextSim").textContent = `${data.textSim}%`;
-//   document.getElementById("modalTrademarkNum").textContent = data.modalTrademarkNum;
-//   // Ensure your modal has this ID for class if you use it, or adjust as needed
-//   if(document.getElementById("modalClass")) document.getElementById("modalClass").textContent = data.modalClass || "N/A"; 
-//   document.getElementById("modalDescription").textContent = data.modalDescription;
-
-//   // 2. Clear and rebuild the Top 3 Matches list
-//   const matchesList = document.getElementById("modalMatchesList");
-//   matchesList.innerHTML = ""; // This removes the hardcoded Loreal items
-
-//   if (data.matches && data.matches.length > 0) {
-//     data.matches.forEach(match => {
-//       const matchHtml = `
-//         <div class="match-item">
-//           <div class="match-left">
-//             <div class="match-badge">Similarity: ${match.sim}</div>
-//             <div class="match-title">${match.label}</div>
-//             <div class="match-meta">Serial: ${match.serial}</div>
-//             <div class="match-desc">Visually similar entry found in database.</div>
-//           </div>
-//           <div class="match-image">
-//             <img src="/logo/${match.id}" alt="Match Logo">
-//           </div>
-//         </div>
-//       `;
-//       matchesList.insertAdjacentHTML('beforeend', matchHtml);
-//     });
-//   } else {
-//     matchesList.innerHTML = "<p style='color: #ccc; padding: 10px;'>No other close matches found.</p>";
-//   }
-
-//   detailModal.classList.add("show");
-// }
-// Replace your existing openDetailModal with this:
 function openDetailModal(data, allMatches = []) {
   // --- Check if data is exists and getting fetched correctly ---
   console.log("Modal Data Received:", data);

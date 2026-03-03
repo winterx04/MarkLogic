@@ -3111,7 +3111,7 @@ input[type="date"]:hover {
 }
 
 .similarity-percentage.low {
-    background: linear-gradient(135deg, #4ade80, #22c55e);
+    background: linear-gradient(135deg, #16783a, #116d33);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -4678,3 +4678,34 @@ color: #000;
     border-color: #e74c3c; /* A noticeable red border */
     box-shadow: 0 0 0 4px rgba(220, 53, 69, 0.15); /* A subtle red glow */
 }
+
+/* ======================================================= */
+/* FOOTER                                                  */
+/* ======================================================= */
+
+.footer {
+            position: absolute;
+            bottom: 30px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            z-index: 10;
+            pointer-events: none; /* Ensures it doesn't block video interactions */
+        }
+
+        .footer p {
+            font-size: 13px;
+            color: rgba(204, 211, 224, 0.5); /* Subtle transparency */
+            letter-spacing: 1px;
+            font-weight: 400;
+            text-transform: uppercase;
+        }
+
+        @media (max-width: 968px) {
+            .footer {
+                bottom: 20px;
+            }
+            .footer p {
+                font-size: 11px;
+            }
+        }

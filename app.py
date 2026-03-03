@@ -484,12 +484,6 @@ def compare():
 #
 #
 
-import io
-import numpy as np
-import faiss
-import psycopg2.extras
-from PIL import Image
-
 # ==========================================
 # 辅助函数：智能读取并只截取左侧 Logo
 # 放在路由函数上方

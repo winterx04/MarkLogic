@@ -25,3 +25,18 @@
 
 24/2/2026:
 - Manage dataset when search need show .pdf to download
+
+
+2/3/2026:
+Need show users themselves what they uploaded followed by their output.
+Need show all similar (Top 3 matches to All similar{make it based on Threshold >70% })
+
+Logo have diff text (Make it dynamic/robust to detect)
+
+
+
+1. User role can see "Dataset" need remove
+2. Manage Dataset part have issue as any search result will display .pdf either way need fix (Validation)
+    - Ex. search 1/2033 (Exceed 2026 should be error)
+    - Ex. search 1/2033 still show 1/2022 results
+3. Add footer @copyright
