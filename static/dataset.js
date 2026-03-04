@@ -421,35 +421,18 @@ if (deleteBtn) {
   });
 }
 
-// Search Button -> call server-side search with VALIDATION
+// Search Button -> call server-side search
 const searchBtn = document.querySelector(".manage-search-btn");
 if (searchBtn) {
   searchBtn.addEventListener("click", () => {
     const batchNumber = document.getElementById("searchBatchNumber").value.trim();
     const year = document.getElementById("searchYear").value.trim();
 
-    // 1. Check if empty
     if (!batchNumber && !year) {
       showPopup("Please enter batch number or year to search.", true);
       return;
     }
 
-    // 2. Validate Year and Format (New Fix)
-    const currentYear = new Date().getFullYear();
-    if (year) {
-      const yearNum = parseInt(year, 10);
-      if (!/^\d{4}$/.test(year) || yearNum > currentYear) {
-        showPopup(`Invalid Year. Please enter a 4-digit year up to ${currentYear}.`, true);
-        return;
-      }
-    }
-    
-    if (batchNumber && !/^\d{1,2}$/.test(batchNumber)) {
-      showPopup("Batch number must be 1–2 digits.", true);
-      return;
-    }
-
-    // 3. Perform Load
     loadTrademarks({
       batch: batchNumber || null,
       year: year || null
