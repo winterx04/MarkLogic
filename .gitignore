@@ -1,2 +1,4 @@
 /models/
 /dataset/
+/.venv/
+/__pycache__/
