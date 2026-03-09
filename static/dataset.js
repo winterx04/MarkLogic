@@ -169,6 +169,7 @@ function validateBatchAndYear(batchNumber, year) {
     showPopup("Batch number must be 1–2 digits.", true);
     return false;
   }
+  // This line handles the future year check
   if (!/^\d{4}$/.test(year) || yearNumber > currentYear) {
     showPopup(`Year must be a valid 4-digit year not exceeding ${currentYear}.`, true);
     return false;
@@ -421,21 +422,44 @@ if (deleteBtn) {
   });
 }
 
-// Search Button -> call server-side search
+// Search Button -> call server-side search with Year Validation
 const searchBtn = document.querySelector(".manage-search-btn");
 if (searchBtn) {
   searchBtn.addEventListener("click", () => {
     const batchNumber = document.getElementById("searchBatchNumber").value.trim();
-    const year = document.getElementById("searchYear").value.trim();
+    const yearInput = document.getElementById("searchYear").value.trim();
 
-    if (!batchNumber && !year) {
+    // 1. Basic empty check
+    if (!batchNumber && !yearInput) {
       showPopup("Please enter batch number or year to search.", true);
       return;
     }
 
+    // 2. Year Validation (Prevents searching future years)
+    if (yearInput) {
+      const currentYear = new Date().getFullYear();
+      const yearNum = parseInt(yearInput, 10);
+
+      if (!/^\d{4}$/.test(yearInput)) {
+        showPopup("Year must be a 4-digit number (e.g., 2024).", true);
+        return;
+      }
+      
+      if (yearNum > currentYear) {
+        showPopup(`Year cannot exceed the current year (${currentYear}).`, true);
+        return;
+      }
+    }
+
+    // 3. Batch Number Validation (Optional but recommended)
+    if (batchNumber && !/^\d{1,2}$/.test(batchNumber)) {
+        showPopup("Batch number must be 1–2 digits.", true);
+        return;
+    }
+
     loadTrademarks({
       batch: batchNumber || null,
-      year: year || null
+      year: yearInput || null
     });
   });
 }

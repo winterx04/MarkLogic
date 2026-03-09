@@ -20,7 +20,7 @@ import database as db
 from ml_utils import MLModel
 from pdf_extractor import extract_all 
 from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
@@ -566,11 +566,10 @@ def perform_comparison():
     if source_category == 'UPLOAD':
         if not file: return jsonify({'error': 'No file'}), 400
         
-        # ⚠️ 修复点 1：确保读取指针在开头，防止读到空数据
         file.seek(0)
         file_bytes = file.read()
         if len(file_bytes) == 0:
-            print("❌ 错误：接收到的文件大小为 0 字节！")
+            print("❌ Error：Accepted File have 0 bytes！")
             return jsonify({'error': 'Empty file received'}), 400
 
         filename = file.filename.lower()
@@ -579,7 +578,7 @@ def perform_comparison():
         if filename.endswith('.pdf'):
             query_items = extract_all(io.BytesIO(file_bytes))
         elif filename.endswith(('.png', '.jpg', '.jpeg', '.webp')):
-            # ⚠️ 修复点 2：自动切掉右侧文字只留 Logo
+            # 自动切掉右侧文字只留 Logo
             clean_logo_bytes = extract_logo_from_bytes(file_bytes)
             query_items = [{
                 'serial_number': 'IMAGE_UPLOAD',
@@ -588,7 +587,7 @@ def perform_comparison():
                 'logo_data': clean_logo_bytes
             }]
         else:
-            print("❌ 错误：不支持的文件格式")
+            print("❌ Error: Unsupported Format")
             return jsonify({'error': 'Unsupported file format'}), 400
     else:
         query_items = db.get_query_items_by_category(source_category)
@@ -612,7 +611,7 @@ def perform_comparison():
                 all_logo_images.append(img)
                 logo_mapping.append(i)
             except Exception as e:
-                print(f"❌ 无法处理图片数据 (Index {i}): {e}")
+                print(f"❌ Error processing image data (Index {i}): {e}")
 
     # Run Text Batch
     print(f"--- Batch processing {len(all_texts)} texts ---")
@@ -631,7 +630,7 @@ def perform_comparison():
         for i, query_idx in enumerate(logo_mapping):
             logo_results[query_idx] = (D_logo[i], I_logo[i])
     else:
-        print("⚠️ 警告：没有成功加载任何 Logo 进入 AI 模型！")
+        print("⚠️ Warning: No logos successfully loaded into the AI model!")
 
     # 4. SCORING & FINAL FORMATTING
     final_results = []
