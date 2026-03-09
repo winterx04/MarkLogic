@@ -1,0 +1,6 @@
+ultralytics>=8.0.0
+pdf2image
+opencv-python
+Pillow
+numpy
+tqdm
