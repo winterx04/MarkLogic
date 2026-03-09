@@ -13,6 +13,14 @@ import pdfplumber
 
 
 # Optional dependencies
+# YOLO logo detector
+try:
+    from ultralytics import YOLO
+    _HAS_YOLO = True
+except Exception:
+    YOLO = None
+    _HAS_YOLO = False
+
 try:
     import cv2
     _HAS_CV2 = True
