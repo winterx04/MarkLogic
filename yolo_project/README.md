@@ -1,40 +1,139 @@
-# Logo YOLO Project
+1️⃣ Where to put your journal PDF
 
-Quick steps:
+After extracting the zip, your folder will look like this:
 
-1. Install dependencies:
+logo_yolo_project/
+│
+├── convert_pdf.py
+├── auto_label.py
+├── train_logo.py
+├── detect_logo.py
+├── export_model.py
+├── requirements.txt
+│
+├── dataset/
+│   ├── images/
+│   │   ├── all/
+│   │   ├── train/
+│   │   └── val/
+│   └── labels/
+│       ├── train/
+│       └── val/
+│
+└── models/
+
+Place your journal PDF in the root folder like this:
+
+logo_yolo_project/
+│
+├── your_journal.pdf   ← PUT IT HERE
+├── convert_pdf.py
+├── train_logo.py
+
+Example:
+
+logo_yolo_project/
+   index.cfm.pdf
+2️⃣ Install dependencies
+
+Open terminal inside the folder:
+
+cd logo_yolo_project
+
+Then run:
+
 pip install -r requirements.txt
+3️⃣ Convert the PDF into training images
 
+Run:
 
-2. Convert your journal PDF to images:
+python convert_pdf.py --pdf index.cfm.pdf
 
-python convert_pdf.py --pdf /path/to/index.cfm.pdf --out dataset/images --dpi 300
+Output images will appear in:
 
-This writes images into `dataset/images/` which you should split into `train/` and `val/`.
+dataset/images/all/
 
-3. Use `auto_label.py` to generate *proposal* bounding boxes (optional but speeds labeling):
+Example:
+
+dataset/images/all/page_0001.jpg
+dataset/images/all/page_0002.jpg
+dataset/images/all/page_0003.jpg
+4️⃣ Split the images (important)
+
+Move about 80% to train and 20% to val
+
+Example:
+
+dataset/images/train/page_0001.jpg
+dataset/images/train/page_0002.jpg
+dataset/images/train/page_0003.jpg
+
+dataset/images/val/page_0020.jpg
+dataset/images/val/page_0021.jpg
+5️⃣ Auto-create initial logo labels
+
+Run:
 
 python auto_label.py --images dataset/images/train --out dataset/labels/train
 
-The script writes YOLO-format `.txt` label files. Open these in an annotation tool like LabelImg to fix any boxes.
+and
 
-4. Label / correct boxes:
-- Use :contentReference[oaicite:6]{index=6} or :contentReference[oaicite:7]{index=7}.
-- Save labels in YOLO format (`.txt` next to each image inside dataset/labels/`train` and `val`).
+python auto_label.py --images dataset/images/val --out dataset/labels/val
 
-5. Train:
+This tries to detect the logo automatically so you don't start labeling from scratch.
+
+6️⃣ Fix labels (5–10 minutes)
+
+Open the images with LabelImg and adjust the boxes around the logos.
+
+Each image should have:
+
+page_0001.jpg
+page_0001.txt
+
+Example label file:
+
+0 0.42 0.07 0.22 0.05
+7️⃣ Train YOLO
+
+Run:
 
 python train_logo.py
 
-Trained weights end up under `runs/detect/train/weights/best.pt`.
+Training takes roughly:
 
-6. Copy best weights to `models/logo_detector.pt` (or use `export_model.py`).
+5–20 minutes
 
-7. Detect:
+depending on your GPU/CPU.
 
-python detect_logo.py --pdf /path/to/index.cfm.pdf --model models/logo_detector.pt --out extracted_logos
+Your trained model will appear here:
 
+runs/detect/train/weights/best.pt
+8️⃣ Move the trained model into your project
 
-Notes:
-- `auto_label.py` proposes boxes from top-of-page connected-components to speed up annotation.
-- The detection script crops each detected logo and makes background transparent (tries best-effort)
+Run:
+
+python export_model.py
+
+Now you have:
+
+models/logo_detector.pt
+9️⃣ Detect logos from PDFs
+
+Run:
+
+python detect_logo.py
+
+Extracted logos will appear in:
+
+extracted_logos/
+
+Example output:
+
+extracted_logos/logo_0_0.png
+extracted_logos/logo_1_0.png
+⚡ Important tip (for best results)
+
+Label about 30–50 pages with logos.
+
+Because logos are very consistent, YOLO learns extremely quickly.
