@@ -34,6 +34,7 @@ Example:
 
 logo_yolo_project/
    index.cfm.pdf
+
 2️⃣ Install dependencies
 
 Open terminal inside the folder:
@@ -47,7 +48,7 @@ pip install -r requirements.txt
 
 Run:
 
-python convert_pdf.py --pdf index.cfm.pdf
+python convert_pdf.py --pdf index.cfm.pdf(PDF path) --start 4 (Start from pg 4.) --prefix journal_2024_05 (Filename to avoid name conflict)
 
 Output images will appear in:
 

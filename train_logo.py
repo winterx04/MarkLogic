@@ -15,8 +15,8 @@ def main():
     # 2. Load the model
     # yolov8s is a good balance for a 3050. 
     # If you still get memory errors, switch this to "yolov8n.pt" (Nano)
-    model = YOLO("yolov8s.pt")
-
+    # model = YOLO("yolov8s.pt")
+    model = YOLO(r"C:\\xampp\\htdocs\\MarkLogic\\runs\\detect\\train6\\weights\\best.pt")
     # 3. Tuned Training Parameters
     model.train(
         data="logo_dataset.yaml",
@@ -33,7 +33,9 @@ def main():
         # ACCURACY TUNING:
         patience=10,        # Early stopping: stops if no improvement for 10 epochs.
         overlap_mask=True,  # Better for overlapping logos.
-        val=True            # Run validation after each epoch to monitor progress.
+        val=True,           # Run validation after each epoch to monitor progress.
+        lr0=0.0001          # Learning rate: Reduce learning rate slightly so the model doesn't "forget" previous learning
+
     )
 
 if __name__ == "__main__":
