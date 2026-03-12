@@ -15,7 +15,7 @@ def main():
     # 2. Load the model
     # yolov8s is a good balance for a 3050. 
     # If you still get memory errors, switch this to "yolov8n.pt" (Nano)
-    # model = YOLO("yolov8s.pt")
+    # model = YOLO("yolov8s.pt")                  train6 is old model now is on train8
     model = YOLO(r"C:\\xampp\\htdocs\\MarkLogic\\runs\\detect\\train6\\weights\\best.pt")
     # 3. Tuned Training Parameters
     model.train(
