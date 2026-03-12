@@ -157,7 +157,7 @@ class MLModel:
 # UltraRobustExtractor
 # -------------------------
 class UltraRobustExtractor:
-    def __init__(self, debug=False,yolo_model_path="models/best.pt"):
+    def __init__(self, debug=False,yolo_model_path="models/best_t8.pt"):
         self.debug = debug
         self.ml = None
 
