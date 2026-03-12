@@ -4,18 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dataset</title>
-    <link rel="icon" type="image/png" href="icons/favicon.png">
-    <link rel="stylesheet" href="style.css">
+    <!-- Use url_for for static files -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body class="dataset-page">
     <!-- Static Background -->
     <div class="image-background"></div>
 
-    <!-- Header Logo -->
-    <a href="menu.html" class="header-logo-link" style="text-decoration: none; color: inherit;">
+    <!-- Header Logo: Link back to the menu route -->
+    <a href="{{ url_for('menu') }}" class="header-logo-link" style="text-decoration: none; color: inherit;">
         <div class="header-logo">
             <div class="header-logo-image">
-                <img src="icons/logo.png" alt="MarkLogic Logo">
+                <img src="{{ url_for('static', filename='icons/logo.png') }}" alt="MarkLogic Logo">
             </div>
             <div class="header-brand">
                 <div class="header-brand-name">MarkLogic</div>
@@ -122,28 +123,21 @@
                                 </tr>
                             </thead>
                             <tbody id="fileTableBody">
+                                <!-- NOTE: This is hardcoded for now. It will become dynamic later. -->
                                 <tr>
-                                    <td class="table-checkbox-col">
-                                        <input type="checkbox" class="manage-checkbox">
-                                    </td>
+                                    <td class="table-checkbox-col"><input type="checkbox" class="manage-checkbox"></td>
                                     <td>1/2025.pdf</td>
                                 </tr>
                                 <tr>
-                                    <td class="table-checkbox-col">
-                                        <input type="checkbox" class="manage-checkbox">
-                                    </td>
+                                    <td class="table-checkbox-col"><input type="checkbox" class="manage-checkbox"></td>
                                     <td>2/2025.pdf</td>
                                 </tr>
                                 <tr>
-                                    <td class="table-checkbox-col">
-                                        <input type="checkbox" class="manage-checkbox">
-                                    </td>
+                                    <td class="table-checkbox-col"><input type="checkbox" class="manage-checkbox"></td>
                                     <td>3/2025.pdf</td>
                                 </tr>
                                 <tr>
-                                    <td class="table-checkbox-col">
-                                        <input type="checkbox" class="manage-checkbox">
-                                    </td>
+                                    <td class="table-checkbox-col"><input type="checkbox" class="manage-checkbox"></td>
                                     <td>4/2025.pdf</td>
                                 </tr>
                             </tbody>
@@ -153,6 +147,10 @@
             </div>
         </div>
     </div>
-    <script src="dataset.js"></script>
+    <!-- Link to the JavaScript file using url_for -->
+    <script src="{{ url_for('static', filename='dataset.js') }}"></script>
 </body>
+<!-- <footer class="footer">
+    <p>&copy; 2026 SKRINE</p>
+</footer> -->
 </html>
