@@ -4711,3 +4711,44 @@ color: #000;
                 font-size: 11px;
             }
         }
+
+/*======================================================= */
+/* STYLES FOR PROGRESS BAR              */    
+
+#progressContainer {
+    margin: 20px auto;
+    width: 100%;
+    max-width: 500px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 15px;
+    box-sizing: border-box;
+}
+
+#progressBarWrapper {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.1);
+    height: 12px;
+    border-radius: 6px;
+    overflow: hidden;
+    margin: 10px 0;
+}
+
+#progressBar {
+    width: 0%;
+    height: 100%;
+    background: #4cc9f0;
+    transition: width 0.4s ease, background-color 0.4s ease;
+}
+
+#progressText {
+    font-size: 13px;
+    color: #fff;
+    font-weight: 500;
+}
+
+#progressPercent {
+    float: right;
+    color: #4cc9f0;
+    font-weight: bold;
+}

@@ -5,7 +5,7 @@ import sys
 import secrets 
 import numpy as np
 import faiss
-from flask import Flask, jsonify, render_template, request, redirect, url_for, flash, send_file, session
+from flask import Flask, json, jsonify, render_template, request, redirect, url_for, flash, send_file, session, Response
 from functools import wraps
 import psycopg2
 import psycopg2.extras
@@ -13,17 +13,15 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_mail import Mail, Message
 from PIL import Image
 from flask import abort  
-from flask import request, jsonify
 import traceback
 import re
 import database as db 
 from ml_utils import MLModel
-from pdf_extractor import extract_all 
+from pdf_extractor import UltraRobustExtractor, extract_all 
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
-
 
 app = Flask(__name__)
 app.secret_key = 'a_secure_random_secret_key'
@@ -274,9 +272,8 @@ def client_dataset():
     return render_template('client-dataset.html')
 
 
-
 @app.route('/upload-journal/<category>', methods=['POST'])
-@admin_required
+@admin_required  # Keep your decorator
 def upload_journal(category):
     file = request.files.get('file')
     batch = request.form.get('batch_number')
@@ -285,65 +282,141 @@ def upload_journal(category):
     if not file or not batch or not year:
         return jsonify({'success': False, 'message': 'Missing File, Batch, or Year'}), 400
 
-    def looks_like_goods(s: str) -> bool:
-        s_up = (s or "").upper()
-        bad_kw = ["DETERGENT", "PREPARATIONS", "SOAP", "LAUNDRY", "DISH-WASHING", "BLEACHING", "SUBSTANCES"]
-        return any(k in s_up for k in bad_kw)
+    # Read the file bytes once into memory so we can use it in the generator
+    file_bytes = file.read()
 
-    try:
-        print(f"📄 Starting extraction from {file.filename}...")
-        raw_data = extract_all(io.BytesIO(file.read()))
-        print(f"✅ Extracted {len(raw_data)} trademarks")
+    def generate():
+        try:
+            raw_data = []
+            extractor = UltraRobustExtractor() # Instantiate your class
 
-        inserted = 0
-        warnings = []
+            # --- PHASE 1: PDF EXTRACTION ---
+            for update in extractor.extract_all(io.BytesIO(file_bytes)):
+                if update['status'] == 'extracting':
+                    # Send progress string to browser
+                    yield json.dumps(update) + "\n"
+                else:
+                    # This is the 'extraction_complete' status with results
+                    raw_data = update['results']
 
-        for tm in raw_data:
-            # -------- normalize keys --------
-            # extractor uses block_snapshot; DB expects evidence_snapshot
-            if tm.get("block_snapshot") and not tm.get("evidence_snapshot"):
-                tm["evidence_snapshot"] = tm["block_snapshot"]
+            # --- PHASE 2: DATABASE & ML PROCESSING ---
+            total_records = len(raw_data)
+            inserted = 0
 
-            tm['category'] = category
-            tm['batch_number'] = batch
-            tm['batch_year'] = year
+            for tm in raw_data:
+                # Normalization
+                if tm.get("block_snapshot") and not tm.get("evidence_snapshot"):
+                    tm["evidence_snapshot"] = tm["block_snapshot"]
 
-            # -------- sanity checks (optional but recommended) --------
-            # If applicant_name looks like goods => parsing likely wrong
-            if looks_like_goods(tm.get("applicant_name", "")):
-                warnings.append({
-                    "serial_number": tm.get("serial_number"),
-                    "issue": "applicant_name looks like goods/description; skipped to avoid poisoning DB",
-                    "applicant_name": tm.get("applicant_name", "")[:120],
-                })
-                continue
+                tm.update({'category': category, 'batch_number': batch, 'batch_year': year})
 
-            # 1) Text embedding
-            combined_text = f"{tm.get('trademark_name','')} {tm.get('description','')}".strip()
-            tm['text_embedding'] = ml_model.generate_text_embedding(combined_text) if combined_text else None
+                # 1) Text embedding
+                combined_text = f"{tm.get('trademark_name','')} {tm.get('description','')}".strip()
+                tm['text_embedding'] = ml_model.generate_text_embedding(combined_text) if combined_text else None
 
-            # 2) Safe logo embedding
-            if tm.get('logo_data') and isinstance(tm['logo_data'], (bytes, bytearray)) and len(tm['logo_data']) > 0:
-                tm['logo_embedding'] = ml_model.generate_image_embedding(io.BytesIO(tm['logo_data']))
-            else:
-                tm['logo_embedding'] = None
-                tm['logo_data'] = None
+                # 2) Logo embedding
+                if tm.get('logo_data'):
+                    tm['logo_embedding'] = ml_model.generate_image_embedding(io.BytesIO(tm['logo_data']))
 
-            # 3) Insert into DB
-            db.insert_trademark(tm)
-            inserted += 1
+                # 3) Insert into DB
+                db.insert_trademark(tm)
+                inserted += 1
 
-        ml_model.build_logo_index()
+                # Send DB Progress
+                db_percent = int((inserted / total_records) * 100)
+                yield json.dumps({
+                    "status": "inserting", 
+                    "percentage": db_percent, 
+                    "current": inserted, 
+                    "total": total_records
+                }) + "\n"
 
-        msg = f'Imported {inserted} records into Batch {batch}/{year}'
-        if warnings:
-            msg += f' (Skipped {len(warnings)} suspicious records)'
+            ml_model.build_logo_index()
+            
+            # Final Success Message
+            yield json.dumps({
+                "status": "complete", 
+                "success": True, 
+                "message": f"Imported {inserted} records into Batch {batch}/{year}"
+            }) + "\n"
 
-        return jsonify({'success': True, 'message': msg, 'warnings': warnings})
+        except Exception as e:
+            traceback.print_exc()
+            yield json.dumps({"status": "error", "message": str(e)}) + "\n"
 
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({'success': False, 'message': str(e)}), 500
+    # We use 'application/x-ndjson' to signal Newline Delimited JSON
+    return Response(generate(), mimetype='application/x-ndjson')
+
+# @app.route('/upload-journal/<category>', methods=['POST'])
+# @admin_required
+# def upload_journal(category):
+#     file = request.files.get('file')
+#     batch = request.form.get('batch_number')
+#     year = request.form.get('batch_year')
+
+#     if not file or not batch or not year:
+#         return jsonify({'success': False, 'message': 'Missing File, Batch, or Year'}), 400
+
+
+#     def looks_like_goods(s: str) -> bool:
+#         s_up = (s or "").upper()
+#         bad_kw = ["DETERGENT", "PREPARATIONS", "SOAP", "LAUNDRY", "DISH-WASHING", "BLEACHING", "SUBSTANCES"]
+#         return any(k in s_up for k in bad_kw)
+
+#     try:
+#         print(f"📄 Starting extraction from {file.filename}...")
+#         raw_data = extract_all(io.BytesIO(file.read()))
+#         print(f"✅ Extracted {len(raw_data)} trademarks")
+
+#         inserted = 0
+#         warnings = []
+
+#         for tm in raw_data:
+#             # -------- normalize keys --------
+#             # extractor uses block_snapshot; DB expects evidence_snapshot
+#             if tm.get("block_snapshot") and not tm.get("evidence_snapshot"):
+#                 tm["evidence_snapshot"] = tm["block_snapshot"]
+
+#             tm['category'] = category
+#             tm['batch_number'] = batch
+#             tm['batch_year'] = year
+
+#             # -------- sanity checks (optional but recommended) --------
+#             # If applicant_name looks like goods => parsing likely wrong
+#             if looks_like_goods(tm.get("applicant_name", "")):
+#                 warnings.append({
+#                     "serial_number": tm.get("serial_number"),
+#                     "issue": "applicant_name looks like goods/description; skipped to avoid poisoning DB",
+#                     "applicant_name": tm.get("applicant_name", "")[:120],
+#                 })
+#                 continue
+
+#             # 1) Text embedding
+#             combined_text = f"{tm.get('trademark_name','')} {tm.get('description','')}".strip()
+#             tm['text_embedding'] = ml_model.generate_text_embedding(combined_text) if combined_text else None
+
+#             # 2) Safe logo embedding
+#             if tm.get('logo_data') and isinstance(tm['logo_data'], (bytes, bytearray)) and len(tm['logo_data']) > 0:
+#                 tm['logo_embedding'] = ml_model.generate_image_embedding(io.BytesIO(tm['logo_data']))
+#             else:
+#                 tm['logo_embedding'] = None
+#                 tm['logo_data'] = None
+
+#             # 3) Insert into DB
+#             db.insert_trademark(tm)
+#             inserted += 1
+
+#         ml_model.build_logo_index()
+
+#         msg = f'Imported {inserted} records into Batch {batch}/{year}'
+#         if warnings:
+#             msg += f' (Skipped {len(warnings)} suspicious records)'
+
+#         return jsonify({'success': True, 'message': msg, 'warnings': warnings})
+
+#     except Exception as e:
+#         traceback.print_exc()
+#         return jsonify({'success': False, 'message': str(e)}), 500
 
 
 # GET /api/trademarks  -> list or search (query params: batch_number, batch_year, q, class)

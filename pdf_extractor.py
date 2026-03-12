@@ -747,41 +747,84 @@ class UltraRobustExtractor:
 
         return result
 
+    # def extract_all(self, pdf_stream, start_page=4):
+    #     results = []
+    #     with pdfplumber.open(pdf_stream) as pdf:
+    #         total_pdf_pages = len(pdf.pages)
+    #         pages_to_process = pdf.pages[start_page - 1:]
+            
+    #         print(f"--- Starting Extraction ---")
+    #         print(f"Total Pages in PDF: {total_pdf_pages}")
+    #         print(f"Processing from page {start_page} to {total_pdf_pages}...")
+
+    #         # Wrap the loop with tqdm for a visual progress bar
+    #         # If tqdm isn't installed, it falls back to a basic range
+    #         iterator = enumerate(pages_to_process, start=start_page)
+    #         if _HAS_TQDM:
+    #             iterator = tqdm(iterator, total=len(pages_to_process), desc="Extracting", unit="pg")
+
+    #         for pnum, page in iterator:
+    #             try:
+    #                 blocks = self.find_blocks(page)
+    #                 for block in blocks:
+    #                     data = self.extract_from_block(page, block, pnum)
+    #                     if data:
+    #                         results.append(data)
+                    
+    #                 # If not using tqdm, print a simple status line
+    #                 if not _HAS_TQDM and pnum % 5 == 0:
+    #                     print(f"Currently on page {pnum}...")
+
+    #             except Exception as e:
+    #                 self.log(f"❌ Page {pnum} failed: {e}")
+            
+    #         print(f"\n--- Extraction Complete ---")
+    #         print(f"Total Records Found: {len(results)}")
+    #     return results
+    
     def extract_all(self, pdf_stream, start_page=4):
         results = []
         with pdfplumber.open(pdf_stream) as pdf:
             total_pdf_pages = len(pdf.pages)
             pages_to_process = pdf.pages[start_page - 1:]
-            
+            total_to_process = len(pages_to_process)
+
             print(f"--- Starting Extraction ---")
             print(f"Total Pages in PDF: {total_pdf_pages}")
             print(f"Processing from page {start_page} to {total_pdf_pages}...")
 
-            # Wrap the loop with tqdm for a visual progress bar
-            # If tqdm isn't installed, it falls back to a basic range
-            iterator = enumerate(pages_to_process, start=start_page)
+            # We use a standard 0-based enumerate to get the index 'i'
+            iterator = enumerate(pages_to_process)
+            
             if _HAS_TQDM:
-                iterator = tqdm(iterator, total=len(pages_to_process), desc="Extracting", unit="pg")
+                iterator = tqdm(iterator, total=total_to_process, desc="Extracting", unit="pg")
 
-            for pnum, page in iterator:
+            # i = 0-based index for progress, page = the PDF page object
+            for i, page in iterator:
+                # Calculate the actual page number for display
+                pnum = i + start_page 
+                
                 try:
+                    # Calculate progress percentage (i+1 because i starts at 0)
+                    progress = int(((i + 1) / total_to_process) * 100)
+                    
+                    # YIELD progress update to the caller (Flask/JS)
+                    yield {"status": "extracting", "percentage": progress, "current_page": pnum}
+
                     blocks = self.find_blocks(page)
                     for block in blocks:
                         data = self.extract_from_block(page, block, pnum)
                         if data:
                             results.append(data)
                     
-                    # If not using tqdm, print a simple status line
                     if not _HAS_TQDM and pnum % 5 == 0:
                         print(f"Currently on page {pnum}...")
 
                 except Exception as e:
                     self.log(f"❌ Page {pnum} failed: {e}")
-            
-            print(f"\n--- Extraction Complete ---")
-            print(f"Total Records Found: {len(results)}")
-        return results
-
+                    
+        # Final yield with total results
+        yield {"status": "extraction_complete", "results": results}
 
 # -------------------------
 # Convenience function for Flask
