@@ -40,8 +40,6 @@
       display: flex;
       flex-direction: column;
       gap: 20px;
-      max-width: 1400px;
-      margin: 0 auto;
     }
 
     .source-block {
@@ -133,7 +131,7 @@
 
     .match-row {
       display: grid;
-      grid-template-columns: 56px 1fr auto auto;
+      grid-template-columns: 56px 1fr auto;
       align-items: center;
       gap: 16px;
       padding: 12px 16px;
@@ -201,13 +199,6 @@
       border: 1px solid rgba(110,224,245,0.3);
     }
 
-    .match-row input[type=checkbox] {
-      width: 18px; height: 18px;
-      cursor: pointer;
-      accent-color: #6458F0;
-      flex-shrink: 0;
-    }
-
     /* ─────────────────────────────────────────
        LEGEND
     ───────────────────────────────────────── */
@@ -217,13 +208,29 @@
       font-size: 13px;
       color: rgba(255,255,255,0.55);
       margin-top: 20px;
-      max-width: 1400px;
       flex-wrap: wrap;
     }
     .results-legend span { display: flex; align-items: center; gap: 8px; }
     .leg-dot {
       width: 10px; height: 10px; border-radius: 3px;
       display: inline-block; flex-shrink: 0;
+    }
+
+    /* Reset button */
+    .reset-btn {
+      background: transparent !important;
+      color: rgba(255,255,255,0.7) !important;
+      border: 1.5px solid rgba(255,255,255,0.25) !important;
+    }
+    .reset-btn:hover:not(:disabled) {
+      background: rgba(255,255,255,0.08) !important;
+      color: rgba(255,255,255,1) !important;
+      border-color: rgba(255,255,255,0.5) !important;
+    }
+
+    /* Modal sits above everything */
+    .detail-modal {
+      z-index: 9999 !important;
     }
 
     /* ─────────────────────────────────────────
@@ -380,21 +387,6 @@
     </div>
   </a>
 
-  <!-- Sidebar -->
-  <div class="compare-page-sidebar">
-    <div class="compare-page-sidebar-section">
-      <div class="compare-page-sidebar-title">Recents</div>
-      <div class="compare-page-sidebar-item">File A comparison results</div>
-      <div class="compare-page-sidebar-item">File B comparison results</div>
-      <div class="compare-page-sidebar-item">File C comparison results</div>
-    </div>
-    <div class="compare-page-sidebar-section">
-      <div class="compare-page-sidebar-title">Last Week</div>
-      <div class="compare-page-sidebar-item">File A comparison results</div>
-      <div class="compare-page-sidebar-item">File B comparison results</div>
-      <div class="compare-page-sidebar-item">File C comparison results</div>
-    </div>
-  </div>
 
   <!-- Main container -->
   <div class="compare-page-container">
@@ -489,9 +481,12 @@
     </div><!-- /compare-page-grid -->
 
     <!-- Compare button -->
-    <div class="compare-page-button-container">
+    <div class="compare-page-button-container" style="display:flex;gap:12px;align-items:center;">
       <button class="compare-page-button" id="compareBtn" disabled onclick="runCompare()">
         Compare
+      </button>
+      <button class="compare-page-button reset-btn" id="resetBtn" onclick="resetCompare()" style="display:none;">
+        ↺ Reset
       </button>
     </div>
 
@@ -660,13 +655,8 @@
     function handleItemClick(key, e) {
       if (e.target.type === 'checkbox') return;
       if (key === 'upload') {
-        // If we already have files, toggle selection
-        if (uploadedFiles.length > 0) {
-          toggleSource('upload');
-        } else {
-          // Only open file picker if no files are uploaded
-          document.getElementById('fileInputUpload').click();
-        }
+        // Only open the picker. toggleSource is called by processFiles after a file is chosen.
+        document.getElementById('fileInputUpload').click();
         return;
       }
       if (key in sourceMap) toggleSource(key);
@@ -736,39 +726,18 @@
 
     // ── File Upload ──────────────────────────────────────────────
     function handleFileUpload(e) {
-      e.preventDefault();
-      e.stopPropagation();
       const files = Array.from(e.target.files);
-      
-      // Clear the input value first
-      e.target.value = '';
-      
-      // Small delay to ensure state is clean
-      setTimeout(() => {
-        if (files.length > 0) {
-          processFiles(files);
-        }
-      }, 10);
+      e.target.value = ''; // reset so same file can be re-selected
+      processFiles(files);
     }
 
     function processFiles(files) {
-      if (!files || files.length === 0) return;
-      
       // Only keep the first (single) file
-      uploadedFiles = [files[0]];
-      currentMode = uploadedFiles[0].name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image';
+      if (files.length > 0) uploadedFiles = [files[0]];
+      currentMode = uploadedFiles.some(f => f.name.toLowerCase().endsWith('.pdf')) ? 'pdf' : 'image';
       renderUploadPreviews();
-      
-      // Ensure upload is selected after file is picked
-      if (selectedSource !== 'upload') {
-        toggleSource('upload');
-      } else {
-        // If already selected, just update the checkbox state
-        document.getElementById(sourceMap.upload).checked = true;
-        document.getElementById(itemEls.upload).classList.add('selected');
-      }
-      
-      updateCompareBtn();
+      // Always ensure upload is selected after a file is picked
+      if (uploadedFiles.length > 0 && selectedSource !== 'upload') toggleSource('upload');
     }
 
     function renderUploadPreviews() {
@@ -859,13 +828,41 @@
       const rs = document.getElementById('resultsSection');
       ls.classList.add('show');
       rs.classList.remove('show');
+      document.getElementById('resetBtn').style.display = 'none';
 
       setTimeout(() => {
         ls.classList.remove('show');
         renderResults();
         rs.classList.add('show');
+        document.getElementById('resetBtn').style.display = 'inline-flex';
         rs.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 2400);
+    }
+
+    // ── Reset ────────────────────────────────────────────────────
+    function resetCompare() {
+      // Clear state
+      selectedSource  = null;
+      selectedCompare = null;
+      uploadedFiles   = [];
+      currentMode     = 'image';
+
+      // Deselect all cards
+      Object.values(sourceMap).forEach(id => { document.getElementById(id).checked = false; });
+      Object.values(compareMap).forEach(id => { document.getElementById(id).checked = false; });
+      Object.values(itemEls).forEach(id => { document.getElementById(id).classList.remove('selected'); });
+
+      // Clear upload preview
+      renderUploadPreviews();
+
+      // Hide results & reset button, disable compare button
+      document.getElementById('resultsSection').classList.remove('show');
+      document.getElementById('loadingSection').classList.remove('show');
+      document.getElementById('compareBtn').disabled = true;
+      document.getElementById('resetBtn').style.display = 'none';
+
+      // Scroll back to top
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     // ── Render ───────────────────────────────────────────────────
@@ -924,7 +921,8 @@
           : `<div class="match-list">
               <div class="match-list-label">↳ Matches from ${cmpLabel}</div>
               ${filtered.map(m => {
-                const high = m.imageSim >= 80;
+                const avg = Math.round((m.imageSim + m.textSim) / 2);
+                const high = avg >= 80;
                 const pillCls = high ? 'high' : 'mid';
                 const fillCls = high ? 'fill-high' : 'fill-mid';
                 const mJson   = JSON.stringify(m).replace(/'/g,"&#39;");
@@ -933,14 +931,24 @@
                   <div class="match-thumb">${m.emoji}</div>
                   <div class="match-info">
                     <div class="match-name">${m.id} — ${m.label}</div>
-                    <div class="bar-wrap">
-                      <div class="mini-bar-bg">
-                        <div class="mini-bar-fill ${fillCls}" style="width:${m.imageSim}%"></div>
+                    <div style="display:flex;flex-direction:column;gap:5px;margin-top:4px;">
+                      <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-size:10px;color:rgba(255,255,255,0.45);width:38px;flex-shrink:0;">Image</span>
+                        <div class="mini-bar-bg" style="flex:1;">
+                          <div class="mini-bar-fill ${m.imageSim >= 80 ? 'fill-high' : 'fill-mid'}" style="width:${m.imageSim}%"></div>
+                        </div>
+                        <span style="font-size:11px;font-weight:600;color:${m.imageSim >= 80 ? '#ff8a8a' : '#6EE0F5'};width:32px;text-align:right;flex-shrink:0;">${m.imageSim}%</span>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-size:10px;color:rgba(255,255,255,0.45);width:38px;flex-shrink:0;">Text</span>
+                        <div class="mini-bar-bg" style="flex:1;">
+                          <div class="mini-bar-fill ${m.textSim >= 80 ? 'fill-high' : 'fill-mid'}" style="width:${m.textSim}%"></div>
+                        </div>
+                        <span style="font-size:11px;font-weight:600;color:${m.textSim >= 80 ? '#ff8a8a' : '#6EE0F5'};width:32px;text-align:right;flex-shrink:0;">${m.textSim}%</span>
                       </div>
                     </div>
                   </div>
-                  <span class="score-pill ${pillCls}">${m.imageSim}%</span>
-                  <input type="checkbox" title="Select ${m.id}" onclick="event.stopPropagation()">
+                  <span class="score-pill ${pillCls}" title="Avg of image & text similarity">${avg}%</span>
                 </div>`;
               }).join('')}
             </div>`;
@@ -990,7 +998,10 @@
       document.getElementById('modalMatchesList').innerHTML = others.map(m => `
         <div class="match-item">
           <div class="match-left">
-            <div class="match-badge${isHigh(m.imageSim) ? ' high' : ''}">${m.imageSim}% match</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+              <div class="match-badge${m.imageSim >= 70 ? ' high' : ''}">🖼 Image: ${m.imageSim}%</div>
+              <div class="match-badge${m.textSim >= 70 ? ' high' : ''}">🔤 Text: ${m.textSim}%</div>
+            </div>
             <div class="match-title">${m.id} — ${m.label || m.company}</div>
             <div class="match-meta">TM No: ${m.tmNum || '—'} &nbsp;|&nbsp; Class: ${m.cls || '—'}</div>
             <div class="match-desc">${m.desc || ''}</div>
@@ -1017,23 +1028,6 @@
       el.className = 'compare-page-popup show' + (isError ? ' error' : '');
       setTimeout(() => { el.classList.remove('show'); }, 3000);
     }
-
-    // Add this helper function to ensure file input is properly configured
-    function setupFileInput() {
-      const fileInput = document.getElementById('fileInputUpload');
-      
-      // Remove any existing listeners and add a fresh one
-      fileInput.removeEventListener('change', handleFileUpload);
-      fileInput.addEventListener('change', handleFileUpload);
-      
-      // Ensure the input accepts both images and PDFs
-      fileInput.accept = 'image/*,.pdf';
-    }
-
-    // Call this when the page loads
-    document.addEventListener('DOMContentLoaded', function() {
-      setupFileInput();
-    });
   </script>
 </body>
 </html>
