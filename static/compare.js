@@ -407,4 +407,458 @@ document.querySelectorAll('.match-badge').forEach(badge => {
   }
 });
 
+// ── Helpers ──────────────────────────────────────────────────
+    const IMG_BASE    = 'static/images/';
+    const PLACEHOLDER = IMG_BASE + 'trademark-placeholder.png';
 
+    /**
+     * Build an <img> tag for a trademark image.
+     * All entries use the shared placeholder until real images are supplied.
+     * To swap in a real image, change the `img` field on the data object to
+     * the actual filename (with extension), e.g. "TM-001.png" or "my-mark.jpg".
+     *
+     * @param {string} imgFile - Filename with extension, or null/undefined to use placeholder
+     * @param {string} alt     - Alt text
+     */
+    function tmImg(imgFile, alt) {
+      const src = imgFile ? IMG_BASE + imgFile : PLACEHOLDER;
+      return `<img src="${src}" alt="${alt}"
+                   style="width:100%;height:100%;object-fit:contain;padding:6px;"
+                   onerror="this.src='${PLACEHOLDER}'">`;
+    }
+
+    // ── State ──────────────────────────────────────────────────
+    let selectedSource  = null;   // 'upload' | 'clientLeft'
+    let selectedCompare = null;   // 'clientRight' | 'myipo'
+    let uploadedFiles   = [];
+    let threshold       = 70;
+    let currentMode     = 'image'; // 'image' | 'pdf'
+
+    const sourceMap  = { upload: 'uploadCheckbox',           clientLeft:  'clientDatasetCheckbox' };
+    const compareMap = { clientRight: 'clientDatasetRightCheckbox', myipo: 'miyoCheckbox' };
+    const itemEls    = { upload: 'uploadItem', clientLeft: 'clientDatasetLeft',
+                         clientRight: 'clientDatasetRight', myipo: 'miyoItem' };
+
+    // ── Mock data ───────────────────────────────────────────────
+    // Each entry now uses an `img` field (filename without extension)
+    // instead of an emoji.  Images live in static/images/<img>.png
+    const mockImageResults = [
+      { id:'TM-001', img:null, company:'CircleBrand Sdn Bhd', imageSim:94, textSim:88,
+        tmNum:'2021003456', cls:'35', agent:'IP Partners MY', desc:'Brand mark for retail services.' },
+      { id:'TM-002', img:null, company:'Alpha Script Co',     imageSim:87, textSim:72,
+        tmNum:'2020001122', cls:'42', agent:'CM Liew Enterprise', desc:'Stylised letter mark for software.' },
+      { id:'TM-003', img:null, company:'Shield Corp',         imageSim:81, textSim:79,
+        tmNum:'2019005678', cls:'16', agent:'Khoo & Associates',  desc:'Heraldic shield for printed materials.' },
+      { id:'TM-004', img:null, company:'Waveline Sdn Bhd',    imageSim:76, textSim:65,
+        tmNum:'2022007890', cls:'38', agent:'TM Agents MY',       desc:'Wave pattern for telecoms.' },
+      { id:'TM-005', img:null, company:'StarBurst Industries', imageSim:73, textSim:55,
+        tmNum:'2018009012', cls:'11', agent:'Law & IP Firm',      desc:'Star burst icon for lighting.' },
+      { id:'TM-006', img:null, company:'Trimark Holdings',    imageSim:71, textSim:68,
+        tmNum:'2023001234', cls:'36', agent:'IP Registry MY',     desc:'Triangle for financial services.' },
+      { id:'TM-007', img:null, company:'Oval Creative',       imageSim:64, textSim:71,
+        tmNum:'2021008765', cls:'41', agent:'Marks Global',       desc:'Oval device for education.' },
+      { id:'TM-008', img:null, company:'Delta Group',         imageSim:55, textSim:60,
+        tmNum:'2017004321', cls:'44', agent:'Delta IP Sdn Bhd',   desc:'Delta symbol for medical.' },
+    ];
+
+    const mockPDFResults = [
+      { id:'TM-S1-01', img:null, label:'Circular Logo Mark', matches:[
+          { id:'TM-S2-03', img:null, label:'Round Badge Mark',  imageSim:94, textSim:88, tmNum:'2021003456', cls:'35', agent:'IP Partners MY',   desc:'Round badge for retail.' },
+          { id:'TM-S2-07', img:null, label:'Circle Brand Icon', imageSim:82, textSim:74, tmNum:'2020009876', cls:'42', agent:'CM Liew',           desc:'Circle icon for tech.' },
+          { id:'TM-S2-11', img:null, label:'Oval Emblem',       imageSim:73, textSim:61, tmNum:'2019003214', cls:'16', agent:'Khoo & Assoc',      desc:'Oval device.' },
+          { id:'TM-S2-14', img:null, label:'Disc Symbol',       imageSim:61, textSim:55, tmNum:'2022001122', cls:'38', agent:'TM Agents',         desc:'Disc symbol.' },
+        ]},
+      { id:'TM-S1-02', img:null, label:'Stylized Letter "A"', matches:[
+          { id:'TM-S2-01', img:null, label:'Angled "A" Mark',   imageSim:91, textSim:83, tmNum:'2020001122', cls:'42', agent:'CM Liew Enterprise', desc:'Stylised A.' },
+          { id:'TM-S2-09', img:null, label:'Alpha Symbol',      imageSim:78, textSim:69, tmNum:'2021007654', cls:'35', agent:'Alpha IP',           desc:'Alpha symbol mark.' },
+          { id:'TM-S2-12', img:null, label:'Script Letter A',   imageSim:65, textSim:59, tmNum:'2018005432', cls:'41', agent:'Script Marks',       desc:'Script A device.' },
+        ]},
+      { id:'TM-S1-03', img:null, label:'Shield Emblem', matches:[
+          { id:'TM-S2-05', img:null, label:'Crest Shield',      imageSim:88, textSim:80, tmNum:'2019005678', cls:'16', agent:'Khoo & Associates',  desc:'Crest shield.' },
+          { id:'TM-S2-08', img:null, label:'Heraldic Badge',    imageSim:75, textSim:67, tmNum:'2022003456', cls:'36', agent:'IP Registry',        desc:'Heraldic badge.' },
+          { id:'TM-S2-13', img:null, label:'Armour Plate Logo', imageSim:55, textSim:48, tmNum:'2017008765', cls:'44', agent:'Delta IP',           desc:'Armour plate.' },
+        ]},
+      { id:'TM-S1-04', img:null, label:'Wave Pattern', matches:[
+          { id:'TM-S2-02', img:null, label:'Flowing Curve',     imageSim:86, textSim:78, tmNum:'2022007890', cls:'38', agent:'TM Agents MY',       desc:'Flowing wave.' },
+          { id:'TM-S2-06', img:null, label:'Ripple Mark',       imageSim:71, textSim:63, tmNum:'2021009012', cls:'11', agent:'Law & IP Firm',      desc:'Ripple device.' },
+        ]},
+      { id:'TM-S1-05', img:null, label:'Star Burst Icon', matches:[
+          { id:'TM-S2-10', img:null, label:'Radiant Star',      imageSim:58, textSim:52, tmNum:'2018009012', cls:'11', agent:'Law & IP Firm',      desc:'Star burst.' },
+          { id:'TM-S2-15', img:null, label:'Sun Burst Logo',    imageSim:53, textSim:47, tmNum:'2020004321', cls:'44', agent:'Delta IP',           desc:'Sun burst device.' },
+        ]},
+      { id:'TM-S1-06', img:null, label:'Abstract Triangle', matches:[
+          { id:'TM-S2-04', img:null, label:'Tri-Form Mark',     imageSim:97, textSim:91, tmNum:'2023001234', cls:'36', agent:'IP Registry MY',     desc:'Tri-form mark.' },
+          { id:'TM-S2-16', img:null, label:'Pyramid Symbol',    imageSim:89, textSim:82, tmNum:'2021005678', cls:'35', agent:'IP Partners',        desc:'Pyramid symbol.' },
+          { id:'TM-S2-17', img:null, label:'Angular Logo',      imageSim:76, textSim:68, tmNum:'2019007890', cls:'42', agent:'CM Liew',            desc:'Angular device.' },
+          { id:'TM-S2-18', img:null, label:'Delta Icon',        imageSim:68, textSim:60, tmNum:'2022009012', cls:'38', agent:'TM Agents',          desc:'Delta icon.' },
+        ]},
+    ];
+
+    // ── Selection helpers ────────────────────────────────────────
+    function handleItemClick(key, e) {
+      if (e.target.type === 'checkbox') return;
+      if (key === 'upload') {
+        document.getElementById('fileInputUpload').click();
+        return;
+      }
+      if (key in sourceMap) toggleSource(key);
+      else toggleCompare(key);
+    }
+    function handleCheckbox(key) {
+      if (key === 'upload') {
+        if (uploadedFiles.length === 0) {
+          document.getElementById('fileInputUpload').click();
+        } else {
+          toggleSource('upload');
+        }
+        return;
+      }
+      if (key in sourceMap) toggleSource(key);
+      else toggleCompare(key);
+    }
+
+    function toggleSource(key) {
+      if (selectedSource === key) { selectedSource = null; }
+      else {
+        if (selectedSource) {
+          document.getElementById(sourceMap[selectedSource]).checked = false;
+          document.getElementById(itemEls[selectedSource]).classList.remove('selected');
+        }
+        selectedSource = key;
+      }
+      const checked = selectedSource === key;
+      document.getElementById(sourceMap[key]).checked = checked;
+      document.getElementById(itemEls[key]).classList.toggle('selected', checked);
+      updateCompareBtn();
+    }
+
+    function toggleCompare(key) {
+      if (selectedCompare === key) { selectedCompare = null; }
+      else {
+        if (selectedCompare) {
+          document.getElementById(compareMap[selectedCompare]).checked = false;
+          document.getElementById(itemEls[selectedCompare]).classList.remove('selected');
+        }
+        selectedCompare = key;
+      }
+      const checked = selectedCompare === key;
+      document.getElementById(compareMap[key]).checked = checked;
+      document.getElementById(itemEls[key]).classList.toggle('selected', checked);
+      updateCompareBtn();
+    }
+
+    function updateCompareBtn() {
+      document.getElementById('compareBtn').disabled = !(selectedSource && selectedCompare);
+    }
+
+    // ── Drag & Drop ──────────────────────────────────────────────
+    function handleDragOver(e, id) {
+      e.preventDefault();
+      document.getElementById(id).classList.add('dragover');
+    }
+    function handleDragLeave(id) {
+      document.getElementById(id).classList.remove('dragover');
+    }
+    function handleDrop(e, id) {
+      e.preventDefault();
+      document.getElementById(id).classList.remove('dragover');
+      processFiles(Array.from(e.dataTransfer.files));
+    }
+
+    // ── File Upload ──────────────────────────────────────────────
+    function handleFileUpload(e) {
+      const files = Array.from(e.target.files);
+      e.target.value = '';
+      processFiles(files);
+    }
+
+    function processFiles(files) {
+      if (files.length > 0) uploadedFiles = [files[0]];
+      currentMode = uploadedFiles.some(f => f.name.toLowerCase().endsWith('.pdf')) ? 'pdf' : 'image';
+      renderUploadPreviews();
+      if (uploadedFiles.length > 0 && selectedSource !== 'upload') toggleSource('upload');
+    }
+
+    function renderUploadPreviews() {
+      const grid  = document.getElementById('uploadPreviewGrid');
+      const count = document.getElementById('uploadFileCount');
+      const item  = document.getElementById('uploadItem');
+
+      if (uploadedFiles.length === 0) {
+        grid.innerHTML    = '';
+        count.textContent = '';
+        item.classList.remove('has-files');
+        return;
+      }
+
+      item.classList.add('has-files');
+      const file  = uploadedFiles[0];
+      const isPDF = file.name.toLowerCase().endsWith('.pdf');
+
+      count.textContent = file.name;
+      grid.innerHTML    = '';
+
+      const tile = document.createElement('div');
+      tile.className = 'upload-preview-tile';
+
+      if (isPDF) {
+        tile.innerHTML = `
+          <div class="pdf-preview-tile-inner">
+            <span class="pdf-icon">📄</span>
+            <span class="pdf-name">${file.name}</span>
+          </div>
+          <button class="preview-remove-btn" title="Remove" onclick="removeFile(event)">✕</button>`;
+      } else {
+        const img = document.createElement('img');
+        img.className = 'preview-img';
+        img.alt   = file.name;
+        img.title = file.name;
+        const reader = new FileReader();
+        reader.onload = e => { img.src = e.target.result; };
+        reader.readAsDataURL(file);
+
+        const removeBtn       = document.createElement('button');
+        removeBtn.className   = 'preview-remove-btn';
+        removeBtn.title       = 'Remove';
+        removeBtn.textContent = '✕';
+        removeBtn.onclick     = ev => removeFile(ev);
+
+        tile.appendChild(img);
+        tile.appendChild(removeBtn);
+      }
+      grid.appendChild(tile);
+
+      const changeBtn       = document.createElement('button');
+      changeBtn.className   = 'upload-change-link';
+      changeBtn.textContent = 'Change file';
+      changeBtn.onclick = e => {
+        e.stopPropagation();
+        document.getElementById('fileInputUpload').click();
+      };
+      grid.appendChild(changeBtn);
+    }
+
+    function removeFile(e) {
+      e.stopPropagation();
+      uploadedFiles = [];
+      renderUploadPreviews();
+      if (selectedSource === 'upload') toggleSource('upload');
+    }
+
+    // ── Run Compare ──────────────────────────────────────────────
+    function runCompare() {
+      if (selectedSource === 'upload' && uploadedFiles.length > 0) {
+        currentMode = uploadedFiles.some(f => f.name.toLowerCase().endsWith('.pdf')) ? 'pdf' : 'image';
+      } else {
+        currentMode = 'pdf';
+      }
+
+      const srcLabel = selectedSource === 'upload' ? 'Uploaded File' : 'Client Dataset';
+      const cmpLabel = selectedCompare === 'myipo' ? 'MYIPO Journals' : 'Client Dataset';
+      document.getElementById('comparisonInfo').textContent = `Comparing ${srcLabel} with ${cmpLabel}`;
+      document.getElementById('filterNote').textContent = `Showing ≥ ${threshold}%`;
+
+      const ls = document.getElementById('loadingSection');
+      const rs = document.getElementById('resultsSection');
+      ls.classList.add('show');
+      rs.classList.remove('show');
+      document.getElementById('resetBtn').style.display = 'none';
+
+      setTimeout(() => {
+        ls.classList.remove('show');
+        renderResults();
+        rs.classList.add('show');
+        document.getElementById('resetBtn').style.display = 'inline-flex';
+        rs.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 2400);
+    }
+
+    // ── Reset ────────────────────────────────────────────────────
+    function resetCompare() {
+      selectedSource  = null;
+      selectedCompare = null;
+      uploadedFiles   = [];
+      currentMode     = 'image';
+
+      Object.values(sourceMap).forEach(id  => { document.getElementById(id).checked = false; });
+      Object.values(compareMap).forEach(id => { document.getElementById(id).checked = false; });
+      Object.values(itemEls).forEach(id    => { document.getElementById(id).classList.remove('selected'); });
+
+      renderUploadPreviews();
+
+      document.getElementById('resultsSection').classList.remove('show');
+      document.getElementById('loadingSection').classList.remove('show');
+      document.getElementById('compareBtn').disabled = true;
+      document.getElementById('resetBtn').style.display = 'none';
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ── Render ───────────────────────────────────────────────────
+    function renderResults() {
+      currentMode === 'image' ? renderImageMode() : renderPDFMode();
+    }
+
+    function renderImageMode() {
+      document.getElementById('sourceBlocks').innerHTML = '';
+      const filtered = mockImageResults.filter(r => r.imageSim >= threshold);
+      document.getElementById('resultsCount').textContent =
+        `${filtered.length} match${filtered.length !== 1 ? 'es' : ''}`;
+
+      document.getElementById('resultsGrid').innerHTML = filtered.map((r, i) => {
+        const high     = r.imageSim >= 80;
+        const pctClass = high ? 'high' : 'low';
+        const imgTag   = tmImg(r.img, r.company);
+        return `
+        <div class="result-card" style="animation-delay:${i * 0.08}s; cursor:pointer;"
+             onclick='openModal(${JSON.stringify(r).replace(/'/g,"&#39;")})'>
+          <div class="card-top">
+            <div class="card-icon-img">${imgTag}</div>
+            <div class="card-similarities">
+              <div class="similarity-item">
+                <span class="similarity-label">Image Similarity</span>
+                <span class="similarity-percentage ${pctClass}">${r.imageSim}%</span>
+                <div class="sim-bar-bg"><div class="sim-bar-fill${high ? ' danger' : ''}" style="width:${r.imageSim}%"></div></div>
+              </div>
+              <div class="similarity-item">
+                <span class="similarity-label">Text Similarity</span>
+                <span class="similarity-percentage ${r.textSim >= 80 ? 'high' : 'low'}">${r.textSim}%</span>
+                <div class="sim-bar-bg"><div class="sim-bar-fill${r.textSim >= 80 ? ' danger' : ''}" style="width:${r.textSim}%"></div></div>
+              </div>
+            </div>
+            <div class="card-label">${r.company}</div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function renderPDFMode() {
+      document.getElementById('resultsGrid').innerHTML = '';
+      let totalMatches = 0;
+      const cmpLabel = selectedCompare === 'myipo' ? 'MYIPO Journals' : 'Client Dataset';
+
+      document.getElementById('sourceBlocks').innerHTML = mockPDFResults.map((src, bi) => {
+        const filtered = src.matches.filter(m => m.imageSim >= threshold);
+        totalMatches  += filtered.length;
+
+        const hasCls   = filtered.length > 0 ? 'has-matches' : '';
+        const badgeTxt = filtered.length > 0
+          ? `${filtered.length} match${filtered.length > 1 ? 'es' : ''} found`
+          : 'No matches above threshold';
+
+        const inner = filtered.length === 0
+          ? `<div class="no-match-msg">No images from ${cmpLabel} are above ${threshold}% for this trademark.</div>`
+          : `<div class="match-list">
+              <div class="match-list-label">↳ Matches from ${cmpLabel}</div>
+              ${filtered.map(m => {
+                const avg     = Math.round((m.imageSim + m.textSim) / 2);
+                const high    = avg >= 80;
+                const pillCls = high ? 'high' : 'mid';
+                const mJson   = JSON.stringify(m).replace(/'/g,"&#39;");
+                return `
+                <div class="match-row" onclick='openModal(${mJson})'>
+                  <div class="match-thumb">${tmImg(m.img, m.label)}</div>
+                  <div class="match-info">
+                    <div class="match-name">${m.id} — ${m.label}</div>
+                    <div style="display:flex;flex-direction:column;gap:5px;margin-top:4px;">
+                      <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-size:10px;color:rgba(255,255,255,0.45);width:38px;flex-shrink:0;">Image</span>
+                        <div class="mini-bar-bg" style="flex:1;">
+                          <div class="mini-bar-fill ${m.imageSim >= 80 ? 'fill-high' : 'fill-mid'}" style="width:${m.imageSim}%"></div>
+                        </div>
+                        <span style="font-size:11px;font-weight:600;color:${m.imageSim >= 80 ? '#ff8a8a' : '#6EE0F5'};width:32px;text-align:right;flex-shrink:0;">${m.imageSim}%</span>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-size:10px;color:rgba(255,255,255,0.45);width:38px;flex-shrink:0;">Text</span>
+                        <div class="mini-bar-bg" style="flex:1;">
+                          <div class="mini-bar-fill ${m.textSim >= 80 ? 'fill-high' : 'fill-mid'}" style="width:${m.textSim}%"></div>
+                        </div>
+                        <span style="font-size:11px;font-weight:600;color:${m.textSim >= 80 ? '#ff8a8a' : '#6EE0F5'};width:32px;text-align:right;flex-shrink:0;">${m.textSim}%</span>
+                      </div>
+                    </div>
+                  </div>
+                  <span class="score-pill ${pillCls}" title="Avg of image & text similarity">${avg}%</span>
+                </div>`;
+              }).join('')}
+            </div>`;
+
+        return `
+        <div class="source-block" style="animation-delay:${bi * 0.07}s;">
+          <div class="source-block-header">
+            <div class="source-thumb">${tmImg(src.img, src.label)}</div>
+            <div class="source-meta">
+              <div class="tm-id">${src.id}</div>
+              <div class="tm-label">${src.label} — Source File</div>
+            </div>
+            <span class="match-count-badge ${hasCls}">${badgeTxt}</span>
+          </div>
+          ${inner}
+        </div>`;
+      }).join('');
+
+      document.getElementById('resultsCount').textContent =
+        `${totalMatches} total match${totalMatches !== 1 ? 'es' : ''}`;
+    }
+
+    // ── Modal ────────────────────────────────────────────────────
+    function openModal(data) {
+      const wrap = document.getElementById('modalImageWrap');
+      const imgId = data.img || data.id;
+      wrap.innerHTML = `<img class="tm-img" src="${IMG_BASE}${imgId}.png" alt="${data.company || data.label || data.id}"
+                             style="width:100%;height:100%;object-fit:contain;"
+                             onerror="this.src='${PLACEHOLDER}'">`;
+
+      document.getElementById('modalCompanyName').textContent   = data.company || data.label || data.id;
+      document.getElementById('modalImageSim').textContent      = data.imageSim ? data.imageSim + '%' : '—';
+      document.getElementById('modalTextSim').textContent       = data.textSim  ? data.textSim  + '%' : '—';
+      document.getElementById('modalTrademarkNum').textContent  = data.tmNum || '—';
+      document.getElementById('modalClass').textContent         = data.cls   || '—';
+      document.getElementById('modalAgent').textContent         = data.agent || '—';
+      document.getElementById('modalDescription').textContent   = data.desc  || '—';
+
+      // Top 3 nearest matches
+      const pool = currentMode === 'image'
+        ? mockImageResults
+        : mockPDFResults.flatMap(s => s.matches);
+
+      const others = pool
+        .filter(x => x.id !== data.id)
+        .sort((a, b) => Math.abs(b.imageSim - data.imageSim) - Math.abs(a.imageSim - data.imageSim))
+        .slice(0, 3);
+
+      document.getElementById('modalMatchesList').innerHTML = others.map(m => `
+        <div class="match-item">
+          <div class="match-left">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+              <div class="match-badge${m.imageSim >= 70 ? ' high' : ''}">Image: ${m.imageSim}%</div>
+              <div class="match-badge${m.textSim  >= 70 ? ' high' : ''}">Text: ${m.textSim}%</div>
+            </div>
+            <div class="match-title">${m.id} — ${m.label || m.company}</div>
+            <div class="match-meta">TM No: ${m.tmNum || '—'} &nbsp;|&nbsp; Class: ${m.cls || '—'}</div>
+            <div class="match-desc">${m.desc || ''}</div>
+          </div>
+          <div class="match-image">
+            <img src="${IMG_BASE}${m.img || m.id}.png" alt="${m.label || m.company || m.id}"
+                 style="width:56px;height:56px;object-fit:contain;border-radius:8px;background:rgba(255,255,255,0.08);padding:4px;"
+                 onerror="this.src='${PLACEHOLDER}'">
+          </div>
+        </div>`).join('');
+
+      document.getElementById('detailModal').classList.add('show');
+    }
+
+    function closeModal() {
+      document.getElementById('detailModal').classList.remove('show');
+    }
+
+    document.getElementById('detailModal').addEventListener('click', function(e) {
+      if (e.target === this) closeModal();
+    });
+
+    // ── Popup helper ─────────────────────────────────────────────
+    function showPopup(msg, isError = false) {
+      const el = document.getElementById('comparePopup');
+      el.textContent = msg;
+      el.className = 'compare-page-popup show' + (isError ? ' error' : '');
+      setTimeout(() => { el.classList.remove('show'); }, 3000);
+    }
