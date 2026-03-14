@@ -844,6 +844,7 @@ def perform_comparison():
 def generate_pdf():
     data = request.get_json()
     trademark_id = data.get('id')
+    top_matches = data.get("topMatches", [])
     
     # Fetch original logo from DB
     logo_bytes = db.get_logo(trademark_id)
@@ -861,20 +862,24 @@ def generate_pdf():
     # 2. Add Logo Image
     if logo_bytes:
         img_data = io.BytesIO(logo_bytes)
-        img = Image(img_data, width=150, height=150)
-        img.hAlign = 'LEFT'
-        elements.append(img)
+        img = RLImage(img_data, width=150, height=150)
+        logo_table = Table([[img]], colWidths=[500])
+        logo_table.setStyle(TableStyle([
+            ('ALIGN', (0,0), (-1,-1), 'CENTER')
+        ]))
+
+        elements.append(logo_table)
     
     elements.append(Spacer(1, 20))
 
     # 3. Main Info Table
     table_data = [
-        [Paragraph("<b>Trademark Name:</b>", styles['Normal']), data.get('label')],
-        [Paragraph("<b>Serial Number:</b>", styles['Normal']), data.get('serial')],
-        [Paragraph("<b>Class:</b>", styles['Normal']), data.get('modalClass')],
-        [Paragraph("<b>Agent:</b>", styles['Normal']), data.get('modalAgent')],
-        [Paragraph("<b>Image Similarity:</b>", styles['Normal']), f"{data.get('imgSim')}%"],
-        [Paragraph("<b>Text Similarity:</b>", styles['Normal']), f"{data.get('textSim')}%"],
+        [Paragraph("<b>Trademark Name:</b>", styles['Normal']), Paragraph(str(data.get('label', '')), styles['Normal'])],
+        [Paragraph("<b>Serial Number:</b>", styles['Normal']), Paragraph(str(data.get('serial', '')), styles['Normal'])],
+        [Paragraph("<b>Class:</b>", styles['Normal']), Paragraph(str(data.get('modalClass', '')), styles['Normal'])],
+        [Paragraph("<b>Agent:</b>", styles['Normal']), Paragraph(str(data.get('modalAgent', '')), styles['Normal'])],
+        [Paragraph("<b>Image Similarity:</b>", styles['Normal']), Paragraph(f"{data.get('imgSim')}%", styles['Normal'])],
+        [Paragraph("<b>Text Similarity:</b>", styles['Normal']), Paragraph(f"{data.get('textSim')}%", styles['Normal'])],
     ]
     
     t = Table(table_data, colWidths=[120, 350])
@@ -889,6 +894,44 @@ def generate_pdf():
     # 4. Description
     elements.append(Paragraph("<b>Description:</b>", styles['Heading3']))
     elements.append(Paragraph(data.get('description', 'N/A'), styles['Normal']))
+
+    # 5 . Top Matches
+    elements.append(Spacer(1, 25))
+    elements.append(Paragraph("Top 3 Similar Trademarks", styles['Heading2']))
+    elements.append(Spacer(1, 10))
+
+    for match in top_matches:
+        logo_bytes = db.get_logo(match["id"])
+
+        row = []
+
+        # logo
+        if logo_bytes:
+            img_data = io.BytesIO(logo_bytes)
+            img = RLImage(img_data, width=60, height=60)
+            img._restrictSize(60, 60)
+            row.append(img)
+        else:
+            row.append("No Image")
+
+        # info
+        info = f"""
+        <b>{match.get('label','')}</b><br/>
+        Serial: {match.get('serial','')}<br/>
+        Similarity: {match.get('totalSim','')}%
+        """
+
+        row.append(Paragraph(info, styles['Normal']))
+
+        table = Table([row], colWidths=[80, 390])
+        table.setStyle(TableStyle([
+            ('GRID',(0,0),(-1,-1),0.5,colors.grey),
+            ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+            ('PADDING',(0,0),(-1,-1),6)
+        ]))
+
+        elements.append(table)
+        elements.append(Spacer(1,10))
 
     # Build and Return
     doc.build(elements)

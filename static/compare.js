@@ -6,7 +6,8 @@ let selectedCompare = null;  // 'clientRight' | 'myipo'
 let uploadedFiles = [];      // Stores the File objects
 let currentMode = 'image';   // 'image' | 'pdf' based on file type
 let lastComparisonResults = []; // To store API response for rendering/filtering
-
+let modalTopMatches = [];      // To store top matches for modal navigation
+ 
 const sourceMap = { upload: 'uploadCheckbox', clientLeft: 'clientDatasetCheckbox' };
 const compareMap = { clientRight: 'clientDatasetRightCheckbox', myipo: 'miyoCheckbox' };
 const itemEls = { upload: 'uploadItem', clientLeft: 'clientDatasetLeft', clientRight: 'clientDatasetRight', myipo: 'miyoItem' };
@@ -337,6 +338,7 @@ function openModal(data, allMatches = []) {
     matchesList.innerHTML = "";
 
     const others = allMatches.filter(m => m.id !== data.id).slice(0, 3);
+    modalTopMatches = others;   // store for PDF generation
     others.forEach(m => {
         const item = document.createElement('div');
         item.className = 'modal-match-row';
@@ -371,7 +373,9 @@ document.getElementById("modalDownload").onclick = async function() {
         serial: document.getElementById("modalTrademarkNum").textContent,
         modalClass: document.getElementById("modalClass").textContent,
         modalAgent: document.getElementById("modalAgent").textContent,
-        description: document.getElementById("modalDescription").textContent
+        description: document.getElementById("modalDescription").textContent,
+        topMatches: modalTopMatches
+
     };
 
     showPopup("📄 Generating PDF report...");
