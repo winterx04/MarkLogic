@@ -3,16 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Compare</title>
+  <title>Compare — MarkLogic</title>
   <!-- Use url_for for static assets -->
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/favicon.png') }}" />
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
 <body class="compare-page-wrapper">
+
+  <!-- Background -->
   <div class="image-background"></div>
 
-  <!-- Link back to the main menu route -->
-  <a href="{{ url_for('menu') }}" style="text-decoration: none; color: inherit;">
+  <!-- Header Logo: Linked back to the menu route -->
+  <a href="{{ url_for('menu') }}" style="text-decoration:none;color:inherit;">
     <div class="compare-page-header-logo">
       <div class="compare-page-header-logo-image">
         <img src="{{ url_for('static', filename='icons/logo.png') }}" alt="MarkLogic Logo">
@@ -24,127 +26,214 @@
     </div>
   </a>
 
-  <!-- Sidebar: This content will eventually be dynamic -->
-  <div class="compare-page-sidebar">
-    <div class="compare-page-sidebar-section">
-      <div class="compare-page-sidebar-title">Recents</div>
-      <div class="compare-page-sidebar-item">File A comparison results</div>
-      <div class="compare-page-sidebar-item">File B comparison results</div>
-      <div class="compare-page-sidebar-item">File C comparison results</div>
-    </div>
-    <div class="compare-page-sidebar-section">
-      <div class="compare-page-sidebar-title">Last Week</div>
-      <div class="compare-page-sidebar-item">File A comparison results</div>
-      <div class="compare-page-sidebar-item">File B comparison results</div>
-      <div class="compare-page-sidebar-item">File C comparison results</div>
-    </div>
-  </div>
-
+  <!-- Main container (Note: Sidebar removed to match modified version) -->
   <div class="compare-page-container">
     <h1 class="compare-page-title">Compare</h1>
 
+    <!-- Source vs Compare-with grid -->
     <div class="compare-page-grid">
+
+      <!-- LEFT: Source File -->
       <div class="compare-page-side">
         <div class="compare-page-side-label">Source File</div>
         <div class="compare-page-options">
-          <div class="compare-page-item upload-zone" id="uploadItem">
-            <div class="compare-page-checkbox-wrapper"><input type="checkbox" class="compare-page-checkbox" id="uploadCheckbox"></div>
-            <div class="compare-page-upload-icon"><svg viewBox="0 0 24 24"><path d="M7 18a4.6 4.4 0 0 1 0 -9a5 4.5 0 0 1 11 2h1a3.5 3.5 0 0 1 0 7h-1" /><polyline points="9 15 12 12 15 15" /><path d="M12 12v9" /></svg></div>
+
+          <!-- Upload -->
+          <div class="compare-page-item upload-zone" id="uploadItem"
+               onclick="handleItemClick('upload', event)"
+               ondragover="handleDragOver(event,'uploadItem')"
+               ondragleave="handleDragLeave('uploadItem')"
+               ondrop="handleDrop(event,'uploadItem')">
+            <div class="compare-page-checkbox-wrapper">
+              <input type="checkbox" class="compare-page-checkbox" id="uploadCheckbox"
+                     onclick="event.stopPropagation(); handleCheckbox('upload')">
+            </div>
+            <div class="compare-page-upload-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 18a4.6 4.4 0 0 1 0 -9a5 4.5 0 0 1 11 2h1a3.5 3.5 0 0 1 0 7h-1"/>
+                <polyline points="9 15 12 12 15 15"/><path d="M12 12v9"/>
+              </svg>
+            </div>
             <div class="compare-page-item-title">Upload File</div>
-            <div class="uploaded-files-list" id="uploadedFilesList"></div>
-            <input type="file" class="compare-page-file-input" id="fileInputUpload" multiple>
+            <div class="upload-preview-grid" id="uploadPreviewGrid"></div>
+            <div class="upload-file-count" id="uploadFileCount"></div>
           </div>
-          <div class="compare-page-item" id="clientDatasetLeft">
-            <div class="compare-page-checkbox-wrapper"><input type="checkbox" class="compare-page-checkbox" id="clientDatasetCheckbox"></div>
-            <div class="compare-page-file-icon"><img src="{{ url_for('static', filename='icons/client-dataset.png') }}" alt="Client Dataset Icon"></div>
+          <input type="file" class="compare-page-file-input" id="fileInputUpload"
+                 accept="image/*,.pdf" onchange="handleFileUpload(event)" multiple>
+
+          <!-- Client Dataset (left) -->
+          <div class="compare-page-item" id="clientDatasetLeft"
+               onclick="handleItemClick('clientLeft', event)">
+            <div class="compare-page-checkbox-wrapper">
+              <input type="checkbox" class="compare-page-checkbox" id="clientDatasetCheckbox"
+                     onclick="event.stopPropagation(); handleCheckbox('clientLeft')">
+            </div>
+            <div class="compare-page-file-icon">
+              <img src="{{ url_for('static', filename='icons/client-dataset.png') }}"
+                  alt="Client Dataset"
+                  class="dataset-icon">
+            </div>
             <div class="compare-page-item-title">Client Dataset</div>
           </div>
+
         </div>
       </div>
+
+      <!-- Divider -->
       <div class="compare-divider"></div>
+
+      <!-- RIGHT: Compare With -->
       <div class="compare-page-side">
         <div class="compare-page-side-label">Compare With</div>
         <div class="compare-page-options">
-          <div class="compare-page-item" id="clientDatasetRight">
-            <div class="compare-page-checkbox-wrapper"><input type="checkbox" class="compare-page-checkbox" id="clientDatasetRightCheckbox"></div>
-            <div class="compare-page-file-icon"><img src="{{ url_for('static', filename='icons/client-dataset.png') }}" alt="Client Dataset Icon"></div>
+
+          <!-- Client Dataset (right) -->
+          <div class="compare-page-item" id="clientDatasetRight"
+               onclick="handleItemClick('clientRight', event)">
+            <div class="compare-page-checkbox-wrapper">
+              <input type="checkbox" class="compare-page-checkbox" id="clientDatasetRightCheckbox"
+                     onclick="event.stopPropagation(); handleCheckbox('clientRight')">
+            </div>
+            <div class="compare-page-file-icon">
+              <img src="{{ url_for('static', filename='icons/client-dataset.png') }}"
+                  alt="Client Dataset"
+                  class="dataset-icon">
+            </div>
             <div class="compare-page-item-title">Client Dataset</div>
           </div>
-          <div class="compare-page-item" id="miyoItem">
-            <div class="compare-page-checkbox-wrapper"><input type="checkbox" class="compare-page-checkbox" id="miyoCheckbox"></div>
-            <div class="compare-page-file-icon"><img src="{{ url_for('static', filename='icons/myipo-journals.png') }}" alt="MYIPO Journals Icon"></div>
+
+          <!-- MYIPO Journals -->
+          <div class="compare-page-item" id="miyoItem"
+               onclick="handleItemClick('myipo', event)">
+            <div class="compare-page-checkbox-wrapper">
+              <input type="checkbox" class="compare-page-checkbox" id="miyoCheckbox"
+                     onclick="event.stopPropagation(); handleCheckbox('myipo')">
+            </div>
+            <div class="compare-page-file-icon">
+              <img src="{{ url_for('static', filename='icons/myipo-journals.png') }}"
+                  alt="MYIPO Journals"
+                  class="dataset-icon">
+            </div>
             <div class="compare-page-item-title">MYIPO Journals</div>
           </div>
+
         </div>
       </div>
+    </div><!-- /compare-page-grid -->
+
+    <!-- Compare buttons -->
+    <div class="compare-page-button-container" style="display:flex;gap:12px;align-items:center;">
+      <button class="compare-page-button" id="compareBtn" disabled onclick="runCompare()">
+        Compare
+      </button>
+          <!-- Progress Container (Same IDs and classes as Dataset) -->
+    <div id="progressContainer" style="display: none;">
+        <div class="progress-info-row">
+            <span id="progressText">Analyzing...</span>
+            <span id="progressPercent">0%</span>
+        </div>
+        <div id="progressBarWrapper">
+            <div id="progressBar"></div>
+        </div>
     </div>
-    <div class="compare-page-button-container"><button class="compare-page-button" id="compareBtn" disabled>Compare</button></div>
+      <button class="compare-page-button reset-btn" id="resetBtn" onclick="resetCompare()" style="display:none;">
+        ↺ Reset
+      </button>
+    </div>
+
+    <!-- Popup notification -->
+    <div class="compare-page-popup" id="comparePopup"></div>
+
+    <!-- Loading -->
     <div class="loading-section" id="loadingSection">
       <h2 class="loading-title">Comparing Trademarks</h2>
-      <div class="progress-bar-wrapper"><div class="progress-bar"><div class="progress-fill"></div></div></div>
+      <div class="progress-bar-wrapper">
+        <div class="progress-bar"><div class="progress-fill"></div></div>
+      </div>
       <p class="loading-text">Processing comparison results...</p>
     </div>
 
-    <!-- Results Section: This will be populated by a Jinja2 'for' loop later -->
+    <!-- RESULTS SECTION -->
     <div class="results-section" id="resultsSection">
       <h2 class="results-title">Results</h2>
-      <div class="comparison-info" id="comparisonInfo">Comparing Upload File with MYIPO Journals</div>
-      <div class="results-grid">
-        <!-- Hardcoded result card for now -->
-        <div class="result-card">
-          <div class="card-top">
-            <div class="card-icon"><img src="{{ url_for('static', filename='icons/trademark-1.png') }}" alt="Logo 1"></div>
-            <div class="card-similarities">
-              <div class="similarity-item"><span class="similarity-label">Image Similarity</span><span class="similarity-percentage">70%</span></div>
-              <div class="similarity-item"><span class="similarity-label">Text Similarity</span><span class="similarity-percentage">70%</span></div>
-            </div>
-            <div class="card-label">Company 1</div>
-          </div>
-        </div>
-        <!-- Other hardcoded cards... -->
+
+      <div class="comparison-info" id="comparisonInfo"></div>
+
+      <div class="results-header-row">
+        <span class="filter-note" id="filterNote">Showing ≥ 70%</span>
+        <span class="results-match-count" id="resultsCount"></span>
+      </div>
+
+      <!-- MODE A: image card grid -->
+      <div class="results-grid" id="resultsGrid"></div>
+
+      <!-- MODE B: PDF per-image source blocks -->
+      <div class="source-blocks" id="sourceBlocks"></div>
+
+      <div class="results-legend">
+        <span><span class="leg-dot" style="background:linear-gradient(135deg,#ff5757,#ff3b3b);"></span>High similarity (≥ 80%)</span>
+        <span><span class="leg-dot" style="background:linear-gradient(135deg,#6EE0F5,#6458F0);"></span>Moderate (70–79%)</span>
+        <span><span class="leg-dot" style="background:rgba(255,255,255,0.2);"></span>Below threshold — hidden</span>
       </div>
     </div>
 
-    <!-- Detail Modal: This will also be populated dynamically -->
+    <!-- DETAIL MODAL -->
     <div class="detail-modal" id="detailModal">
       <div class="detail-modal-content">
-        <button class="detail-modal-close" id="modalClose">&times;</button>
+        <button class="detail-modal-close" id="modalClose" onclick="closeModal()">&times;</button>
         <button class="detail-modal-download" id="modalDownload">
-          <svg><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
           Download Report
         </button>
         <div class="detail-modal-body">
-          <div class="detail-modal-left"><div class="detail-modal-image"><img id="modalImage" src="{{ url_for('static', filename='icons/trademark-1.png') }}" alt="Trademark"></div></div>
+          <div class="detail-modal-left">
+            <div class="detail-modal-image" id="modalImageWrap"></div>
+          </div>
           <div class="detail-modal-right">
             <h2 id="modalCompanyName">Company Name</h2>
             <div class="detail-modal-similarities">
-              <div class="detail-similarity-item"><span class="detail-similarity-label">Image Similarity</span><span class="detail-similarity-value" id="modalImageSim">70%</span></div>
-              <div class="detail-similarity-item"><span class="detail-similarity-label">Text Similarity</span><span class="detail-similarity-value" id="modalTextSim">70%</span></div>
+              <div class="detail-similarity-item">
+                <span class="detail-similarity-label">Image Similarity</span>
+                <span class="detail-similarity-value" id="modalImageSim">—</span>
+              </div>
+              <div class="detail-similarity-item">
+                <span class="detail-similarity-label">Text Similarity</span>
+                <span class="detail-similarity-value" id="modalTextSim">—</span>
+              </div>
             </div>
             <div class="detail-modal-meta">
-              <span><strong>Trademark Number:</strong> <span id="modalTrademarkNum">2018002150</span></span>
-              <span><strong>Class:</strong> <span id="modalClass">35</span></span>
-              <span><strong>Agent:</strong> <span id="modalAgent">CM LIEW ENTERPRISE SDN. BHD.</span></span>
+              <span><strong>Trademark Number:</strong> <span id="modalTrademarkNum">—</span></span>
+              <span><strong>Class:</strong> <span id="modalClass">—</span></span>
+              <span><strong>Agent:</strong> <span id="modalAgent">—</span></span>
             </div>
           </div>
         </div>
         <div class="detail-modal-description">
           <h3>Description</h3>
-          <p id="modalDescription">Registration of this trademark shall give no right to the exclusive use of the letters ‘cm’ and the words ‘auto electrical in alternator & starter motor’. Business management, business administration, advertising in retail outlet relating of alternator, starter motor, ignition distributor and spare parts (automotive); All included in class 35. </p>
+          <p id="modalDescription">—</p>
         </div>
         <div class="detail-modal-matches">
-          <h3>Top 3 Matches:</h3>
-          <div id="modalMatchesList">
-           
-          </div>
+          <h3>Top Matches:</h3>
+          <div id="modalMatchesList"></div>
         </div>
       </div>
     </div>
-  
-  <!-- Link to the JavaScript file using url_for -->
+
+  </div><!-- /compare-page-container -->
+
+  <!-- Script link with url_for -->
   <script src="{{ url_for('static', filename='compare.js') }}"></script>
+  <script>
+    document.querySelectorAll('.dataset-icon').forEach(img => {
+      img.onerror = function () {
+        this.onerror = null;
+        this.src = "/static/images/placeholder.png";
+      };
+    });
+  </script>
 </body>
-<!-- <footer class="footer">
-    <p>&copy; 2026 SKRINE</p>
-</footer> -->
 </html>

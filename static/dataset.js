@@ -191,7 +191,6 @@ if (uploadBtn) {
       return;
     }
 
-    // UI Elements
     const progressContainer = document.getElementById("progressContainer");
     const progressBar = document.getElementById("progressBar");
     const progressPercent = document.getElementById("progressPercent");
@@ -206,11 +205,10 @@ if (uploadBtn) {
     uploadBtn.innerText = "⏳ Initializing AI...";
     uploadBtn.disabled = true;
     
-    // Show the progress bar
     progressContainer.style.display = "block";
     progressBar.style.width = "0%";
+    progressBar.style.backgroundColor = "#4cc9f0"; 
     progressPercent.innerText = "0%";
-    progressText.innerText = "Connecting to server...";
 
     try {
       const response = await fetch('/upload-journal/MYIPO', {
@@ -218,66 +216,70 @@ if (uploadBtn) {
         body: formData
       });
 
-      if (!response.ok) throw new Error("Server error occurred");
+      if (!response.ok) throw new Error("Server error");
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       
+      // CRUCIAL: The Buffer Fix
+      let leftover = ""; 
+
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
 
-        // Decode the chunk and split by newline (in case multiple updates arrived together)
+        // Combine any leftover text from the previous chunk with the new chunk
         const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
+        const combined = leftover + chunk;
+        const lines = combined.split('\n');
+
+        // Save the last element (which is either empty or a partial line) for next time
+        leftover = lines.pop();
 
         for (const line of lines) {
           if (!line.trim()) continue;
           
-          const data = JSON.parse(line);
+          try {
+            const data = JSON.parse(line);
 
-          if (data.status === "extracting") {
-            progressBar.style.width = `${data.percentage}%`;
-            progressPercent.innerText = `${data.percentage}%`;
-            progressText.innerText = `AI reading PDF: Page ${data.current_page}`;
-            uploadBtn.innerText = `⏳ Extracting... ${data.percentage}%`;
-          } 
-          
-          else if (data.status === "inserting") {
-            progressBar.style.backgroundColor = "#2ecc71"; // Turn green for DB phase
-            progressBar.style.width = `${data.percentage}%`;
-            progressPercent.innerText = `${data.percentage}%`;
-            progressText.innerText = `Saving to DB: ${data.current} of ${data.total}`;
-            uploadBtn.innerText = `💾 Saving... ${data.percentage}%`;
-          }
-
-          else if (data.status === "complete") {
-            showPopup(`✅ ${data.message}`);
-            // Reset form
-            selectedFiles = [];
-            renderFileList();
-            updateUploadButton();
-            document.getElementById("batchNumber").value = "";
-            document.getElementById("yearInput").value = "";
-            if (typeof loadTrademarks === "function") loadTrademarks();
-          }
-
-          else if (data.status === "error") {
-            showPopup(`❌ Error: ${data.message}`, true);
+            if (data.status === "extracting") {
+              progressBar.style.width = `${data.percentage}%`;
+              progressPercent.innerText = `${data.percentage}%`;
+              progressText.innerText = `AI reading PDF: Page ${data.current_page}`;
+              uploadBtn.innerText = `⏳ Extracting... ${data.percentage}%`;
+            } 
+            else if (data.status === "inserting") {
+              // Now this will actually show up!
+              progressBar.style.backgroundColor = "#2ecc71"; 
+              progressBar.style.width = `${data.percentage}%`;
+              progressPercent.innerText = `${data.percentage}%`;
+              progressText.innerText = `Saving to DB: ${data.current} of ${data.total}`;
+              uploadBtn.innerText = `💾 Saving... ${data.percentage}%`;
+            }
+            else if (data.status === "complete") {
+              showPopup(`✅ ${data.message}`);
+              selectedFiles = [];
+              renderFileList();
+              document.getElementById("batchNumber").value = "";
+              document.getElementById("yearInput").value = "";
+              if (typeof loadTrademarks === "function") loadTrademarks();
+            }
+            else if (data.status === "error") {
+              showPopup(`❌ Error: ${data.message}`, true);
+            }
+          } catch (e) {
+            // Ignore parse errors for partial lines (the buffer handles them)
+            console.warn("Stream processing line error:", e);
           }
         }
       }
     } catch (error) {
       console.error('Upload Error:', error);
-      showPopup("❌ A server error occurred. Check the console.", true);
+      showPopup("❌ Server error. Check console.", true);
     } finally {
       uploadBtn.innerText = originalBtnText;
       uploadBtn.disabled = false;
-      // Hide progress bar after a short delay
-      setTimeout(() => {
-          progressContainer.style.display = "none";
-          progressBar.style.backgroundColor = ""; // Reset color
-      }, 3000);
+      setTimeout(() => { progressContainer.style.display = "none"; }, 5000);
     }
   });
 }

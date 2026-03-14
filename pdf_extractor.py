@@ -244,100 +244,122 @@ class UltraRobustExtractor:
     # =====================================================
     # LOGO EXTRACTION - ONLY LOGO (tight + transparent)
     # =====================================================
-    # def extract_logo_only(self, page, block_bbox):
-    #     x0, y0, x1, y1 = block_bbox
+    def extract_logo_only(self, page, block_bbox):
+        """Finds the trademark image by looking for ink on the left side of the block."""
+        x0, y0, x1, y1 = block_bbox
+        
+        # Logos in MYIPO are almost always in the top-left of the entry.
+        # We look at the top 60% of the block height and left 50% of the width.
+        search_height = (y1 - y0) * 0.60
+        logo_zone_bbox = (x0, y0, x0 + (x1 - x0) * 0.5, y0 + search_height)
 
-    #     # 1. Targeted Header Area
-    #     # We look at the top 45% of the block. 
-    #     # We capture the left 50% of the page width (where logos live in MYIPO)
-    #     header_height = (y1 - y0) * 0.45
-    #     logo_zone_bbox = (x0, y0, x0 + (x1 - x0) * 0.5, y0 + header_height)
+        try:
+            # Render at high resolution
+            header_img = page.within_bbox(logo_zone_bbox).to_image(resolution=300)
+            img = header_img.original.convert("RGB")
+            arr = np.array(img)
+            
+            # Find any pixel that isn't white (ink)
+            # Threshold 240 is safe for scans; for clean digital PDFs, 250 is better.
+            mask = np.any(arr < 242, axis=2)
+            if not mask.any(): 
+                return None
 
+            # Get the bounding box of ALL ink found in the left zone
+            ys, xs = np.where(mask)
+            left, top, right, bottom = xs.min(), ys.min(), xs.max(), ys.max()
+            
+            # Add a small 5-pixel padding
+            cropped_logo = img.crop((max(0, left-5), max(0, top-5), min(img.width, right+5), min(img.height, bottom+5)))
+            
+            buf = io.BytesIO()
+            cropped_logo.save(buf, format="PNG")
+            logo_bytes = buf.getvalue()
+
+            # Final cleanup
+            return self.remove_white_bg_make_transparent(logo_bytes)
+        except Exception as e:
+            self.log(f"Heuristic extraction failed: {e}")
+            return None
+        
+    def extract_logo_yolo(self, page, block_bbox):
+            if not self.yolo: return None
+            try:
+                # We crop a slightly larger area to give YOLO context
+                img_obj = page.within_bbox(block_bbox).to_image(resolution=300)
+                img = img_obj.original.convert("RGB")
+                results = self.yolo(img, verbose=False, conf=0.25) # Lower confidence to be safe
+
+                if not results or len(results[0].boxes) == 0:
+                    return None
+
+                # Pick the box with the largest area (usually the logo)
+                boxes = results[0].boxes.xyxy.cpu().numpy()
+                best_box = boxes[np.argmax([(b[2]-b[0])*(b[3]-b[1]) for b in boxes])]
+                
+                logo_crop = img.crop((best_box[0], best_box[1], best_box[2], best_box[3]))
+                
+                buf = io.BytesIO()
+                logo_crop.save(buf, format="PNG")
+                return self.remove_white_bg_make_transparent(buf.getvalue())
+            except Exception as e:
+                self.log(f"YOLO failed: {e}")
+                return None
+            
+    # def extract_logo_yolo(self, page, block_bbox):
+    #     """
+    #     Use YOLO model to detect the logo region and crop it.
+    #     """
+    #     if not self.yolo:
+    #         return None
     #     try:
-    #         # Render at high res to see small details
-    #         header_img = page.within_bbox(logo_zone_bbox).to_image(resolution=300)
-    #         img = header_img.original.convert("RGB")
-    #         arr = np.array(img)
-            
-    #         # Find all "ink" pixels
-    #         mask = np.any(arr < 240, axis=2)
-    #         if not mask.any(): return None
+    #         x0, y0, x1, y1 = block_bbox
 
-    #         # 2. Grouping Logic
-    #         # Instead of picking one 'blob', find the bounding box of ALL blobs 
-    #         # on the left side. This ensures "LOUIS" and "VUITTON" stay together.
-    #         ys, xs = np.where(mask)
-            
-    #         # Crop the original image to the total bounding box of all ink found
-    #         cropped_logo = img.crop((xs.min(), ys.min(), xs.max(), ys.max()))
-            
-    #         # Convert to bytes
+    #         block_page = page.within_bbox(block_bbox)
+    #         img_obj = block_page.to_image(resolution=300)
+
+    #         img = img_obj.original.convert("RGB")
+    #         img_np = np.array(img)
+
+    #         results = self.yolo(img_np, verbose=False)
+
+    #         if not results or len(results[0].boxes) == 0:
+    #             return None
+
+    #         boxes = results[0].boxes.xyxy.cpu().numpy()
+
+    #         # choose largest detection
+    #         best_box = None
+    #         best_area = 0
+
+    #         for box in boxes:
+    #             x1b, y1b, x2b, y2b = map(int, box)
+    #             area = (x2b - x1b) * (y2b - y1b)
+
+    #             if area > best_area:
+    #                 best_area = area
+    #                 best_box = (x1b, y1b, x2b, y2b)
+
+    #         if not best_box:
+    #             return None
+
+    #         x1b, y1b, x2b, y2b = best_box
+
+    #         logo_crop = img.crop((x1b, y1b, x2b, y2b))
+
     #         buf = io.BytesIO()
-    #         cropped_logo.save(buf, format="PNG")
+    #         logo_crop.save(buf, format="PNG")
     #         logo_bytes = buf.getvalue()
 
-    #         # Clean background and return
+    #         # apply your existing cleanup
+    #         logo_bytes = self.tight_crop_by_nonwhite(logo_bytes)
     #         logo_bytes = self.remove_white_bg_make_transparent(logo_bytes)
+
     #         return logo_bytes
 
     #     except Exception as e:
-    #         self.log(f"Logo extraction failed: {e}")
+    #         self.log(f"YOLO logo detection failed: {e}")
     #         return None
-
-    def extract_logo_yolo(self, page, block_bbox):
-        """
-        Use YOLO model to detect the logo region and crop it.
-        """
-        if not self.yolo:
-            return None
-        try:
-            x0, y0, x1, y1 = block_bbox
-
-            block_page = page.within_bbox(block_bbox)
-            img_obj = block_page.to_image(resolution=300)
-
-            img = img_obj.original.convert("RGB")
-            img_np = np.array(img)
-
-            results = self.yolo(img_np, verbose=False)
-
-            if not results or len(results[0].boxes) == 0:
-                return None
-
-            boxes = results[0].boxes.xyxy.cpu().numpy()
-
-            # choose largest detection
-            best_box = None
-            best_area = 0
-
-            for box in boxes:
-                x1b, y1b, x2b, y2b = map(int, box)
-                area = (x2b - x1b) * (y2b - y1b)
-
-                if area > best_area:
-                    best_area = area
-                    best_box = (x1b, y1b, x2b, y2b)
-
-            if not best_box:
-                return None
-
-            x1b, y1b, x2b, y2b = best_box
-
-            logo_crop = img.crop((x1b, y1b, x2b, y2b))
-
-            buf = io.BytesIO()
-            logo_crop.save(buf, format="PNG")
-            logo_bytes = buf.getvalue()
-
-            # apply your existing cleanup
-            logo_bytes = self.tight_crop_by_nonwhite(logo_bytes)
-            logo_bytes = self.remove_white_bg_make_transparent(logo_bytes)
-
-            return logo_bytes
-
-        except Exception as e:
-            self.log(f"YOLO logo detection failed: {e}")
-            return None
 
     def get_visual_components(self, img_bytes, white_thresh=250, min_area=120):
         """Find separate visual components. Ignore lines / empty boxes. Prefer dense ink."""
@@ -704,6 +726,7 @@ class UltraRobustExtractor:
 
         # fallback to heuristic method
         if not logo_data:
+            print(f"YOLO failed to find logo on page {page_num}, trying heuristic method...")
             logo_data = self.extract_logo_only(page, bbox)
         logo_emb = None
         if logo_data and self.ml:

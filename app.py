@@ -273,38 +273,40 @@ def client_dataset():
 
 
 @app.route('/upload-journal/<category>', methods=['POST'])
-@admin_required  # Keep your decorator
+@admin_required 
 def upload_journal(category):
     file = request.files.get('file')
     batch = request.form.get('batch_number')
     year = request.form.get('batch_year')
 
     if not file or not batch or not year:
-        return jsonify({'success': False, 'message': 'Missing File, Batch, or Year'}), 400
+        return jsonify({'success': False, 'message': 'Missing fields'}), 400
 
-    # Read the file bytes once into memory so we can use it in the generator
     file_bytes = file.read()
 
     def generate():
         try:
             raw_data = []
-            extractor = UltraRobustExtractor() # Instantiate your class
+            extractor = UltraRobustExtractor() 
 
             # --- PHASE 1: PDF EXTRACTION ---
+            # Using update.get() is safer
             for update in extractor.extract_all(io.BytesIO(file_bytes)):
-                if update['status'] == 'extracting':
-                    # Send progress string to browser
+                status = update.get('status')
+                if status == 'extracting':
                     yield json.dumps(update) + "\n"
-                else:
-                    # This is the 'extraction_complete' status with results
-                    raw_data = update['results']
+                elif status == 'extraction_complete':
+                    raw_data = update.get('results', [])
 
-            # --- PHASE 2: DATABASE & ML PROCESSING ---
+            # --- PHASE 2: DATABASE & AI PROCESSING ---
             total_records = len(raw_data)
-            inserted = 0
+            if total_records == 0:
+                yield json.dumps({"status": "error", "message": "No trademarks found in PDF."}) + "\n"
+                return
 
+            inserted = 0
             for tm in raw_data:
-                # Normalization
+                # Normalize keys
                 if tm.get("block_snapshot") and not tm.get("evidence_snapshot"):
                     tm["evidence_snapshot"] = tm["block_snapshot"]
 
@@ -312,7 +314,8 @@ def upload_journal(category):
 
                 # 1) Text embedding
                 combined_text = f"{tm.get('trademark_name','')} {tm.get('description','')}".strip()
-                tm['text_embedding'] = ml_model.generate_text_embedding(combined_text) if combined_text else None
+                if combined_text:
+                    tm['text_embedding'] = ml_model.generate_text_embedding(combined_text)
 
                 # 2) Logo embedding
                 if tm.get('logo_data'):
@@ -322,7 +325,7 @@ def upload_journal(category):
                 db.insert_trademark(tm)
                 inserted += 1
 
-                # Send DB Progress
+                # 4) YIELD PROGRESS (Phase 2)
                 db_percent = int((inserted / total_records) * 100)
                 yield json.dumps({
                     "status": "inserting", 
@@ -331,20 +334,20 @@ def upload_journal(category):
                     "total": total_records
                 }) + "\n"
 
+            # Rebuild index
             ml_model.build_logo_index()
             
             # Final Success Message
             yield json.dumps({
                 "status": "complete", 
                 "success": True, 
-                "message": f"Imported {inserted} records into Batch {batch}/{year}"
+                "message": f"Successfully imported {inserted} records."
             }) + "\n"
 
         except Exception as e:
             traceback.print_exc()
             yield json.dumps({"status": "error", "message": str(e)}) + "\n"
 
-    # We use 'application/x-ndjson' to signal Newline Delimited JSON
     return Response(generate(), mimetype='application/x-ndjson')
 
 # @app.route('/upload-journal/<category>', methods=['POST'])
@@ -557,9 +560,6 @@ def compare():
 #
 #
 # ==========================================
-# 辅助函数：智能读取并只截取左侧 Logo
-# 放在路由函数上方
-# ==========================================
 def extract_logo_from_bytes(img_bytes, white_thresh=240):
     try:
         img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
@@ -589,14 +589,12 @@ def extract_logo_from_bytes(img_bytes, white_thresh=240):
         if current_gap_len > max_gap_len:
             max_gap_start = current_gap_start
 
-        # 智能判定：如果找到了明显的垂直空白区(>15像素宽)，说明是带描述的截图，切除右侧！
-        # 如果没有明显缝隙，说明用户上传的本身就是一张纯 Logo，保持原样。
         if max_gap_len > 15:
             left_img = img.crop((0, 0, max_gap_start, img.height))
         else:
             left_img = img
 
-        # 紧密贴边裁剪 (Tight Crop)
+        # (Tight Crop)
         left_arr = np.array(left_img)
         left_mask = np.any(left_arr < white_thresh, axis=2)
         if left_mask.any():
@@ -649,7 +647,15 @@ def perform_comparison():
         print(f"📥 收到上传文件: {filename}, 大小: {len(file_bytes)} bytes")
         
         if filename.endswith('.pdf'):
-            query_items = extract_all(io.BytesIO(file_bytes))
+            # query_items = extract_all(io.BytesIO(file_bytes)) <-- OLD BUGGY LINE
+            
+            # NEW FIX: Exhaust the generator to get the final results
+            results_from_pdf = []
+            for update in extract_all(io.BytesIO(file_bytes)):
+                if update['status'] == 'extraction_complete':
+                    results_from_pdf = update['results']
+            
+            query_items = results_from_pdf # This is now the actual list of TMs
         elif filename.endswith(('.png', '.jpg', '.jpeg', '.webp')):
             # 自动切掉右侧文字只留 Logo
             clean_logo_bytes = extract_logo_from_bytes(file_bytes)

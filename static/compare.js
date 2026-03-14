@@ -1,222 +1,197 @@
-const uploadCheckbox = document.getElementById("uploadCheckbox");
-const clientDatasetCheckbox = document.getElementById("clientDatasetCheckbox");
-const miyoCheckbox = document.getElementById("miyoCheckbox");
-const clientDatasetRightCheckbox = document.getElementById("clientDatasetRightCheckbox");
-const compareBtn = document.getElementById("compareBtn");
-const uploadItem = document.getElementById("uploadItem");
-const fileInputUpload = document.getElementById("fileInputUpload");
-const resultsGrid = document.querySelector(".results-grid");
-const detailModal = document.getElementById("detailModal");
-const modalClose = document.getElementById("modalClose");
+/**
+ * STATE MANAGEMENT
+ */
+let selectedSource = null;   // 'upload' | 'clientLeft'
+let selectedCompare = null;  // 'clientRight' | 'myipo'
+let uploadedFiles = [];      // Stores the File objects
+let currentMode = 'image';   // 'image' | 'pdf' based on file type
+let lastComparisonResults = []; // To store API response for rendering/filtering
 
-function updateButtonState() {
-  const leftSelected = uploadCheckbox.checked || clientDatasetCheckbox.checked;
-  const rightSelected = miyoCheckbox.checked || clientDatasetRightCheckbox.checked;
-  compareBtn.disabled = !(leftSelected && rightSelected);
+const sourceMap = { upload: 'uploadCheckbox', clientLeft: 'clientDatasetCheckbox' };
+const compareMap = { clientRight: 'clientDatasetRightCheckbox', myipo: 'miyoCheckbox' };
+const itemEls = { upload: 'uploadItem', clientLeft: 'clientDatasetLeft', clientRight: 'clientDatasetRight', myipo: 'miyoItem' };
+
+/**
+ * INITIALIZATION
+ */
+document.addEventListener('DOMContentLoaded', () => {
+    updateCompareBtn();
+});
+
+/**
+ * SELECTION LOGIC
+ */
+function handleItemClick(key, e) {
+    if (e.target.type === 'checkbox') return;
+    if (key === 'upload' && uploadedFiles.length === 0) {
+        document.getElementById('fileInputUpload').click();
+        return;
+    }
+    if (key in sourceMap) toggleSource(key);
+    else toggleCompare(key);
 }
 
-function updateVisualState() {
-  const items = [
-    [uploadCheckbox, uploadItem],
-    [clientDatasetCheckbox, document.getElementById("clientDatasetLeft")],
-    [miyoCheckbox, document.getElementById("miyoItem")],
-    [clientDatasetRightCheckbox, document.getElementById("clientDatasetRight")],
-  ];
-  items.forEach(([cb, el]) => {
-    cb.checked ? el.classList.add("selected") : el.classList.remove("selected");
-  });
+function handleCheckbox(key) {
+    if (key === 'upload' && uploadedFiles.length === 0) {
+        document.getElementById('fileInputUpload').click();
+    } else {
+        key in sourceMap ? toggleSource(key) : toggleCompare(key);
+    }
 }
 
-function toggleSelection(clicked, group) {
-  if (clicked.checked) {
-    group.forEach(cb => {
-      if (cb !== clicked) cb.checked = false;
-    });
-  }
-  updateVisualState();
-  updateButtonState();
-}
-
-[uploadCheckbox, clientDatasetCheckbox].forEach(cb => {
-  cb.addEventListener("change", () => toggleSelection(cb, [uploadCheckbox, clientDatasetCheckbox]));
-});
-
-[miyoCheckbox, clientDatasetRightCheckbox].forEach(cb => {
-  cb.addEventListener("change", () => toggleSelection(cb, [miyoCheckbox, clientDatasetRightCheckbox]));
-});
-
-document.getElementById("clientDatasetLeft").addEventListener("click", e => {
-  if (!e.target.closest(".compare-page-checkbox")) {
-    clientDatasetCheckbox.checked = !clientDatasetCheckbox.checked;
-    toggleSelection(clientDatasetCheckbox, [uploadCheckbox, clientDatasetCheckbox]);
-  }
-});
-
-uploadItem.addEventListener("click", e => {
-  if (!e.target.closest(".compare-page-checkbox") && !e.target.closest(".uploaded-files-list")) {
-    fileInputUpload.click();
-  } else if (e.target.closest(".compare-page-checkbox")) {
-    uploadCheckbox.checked = !uploadCheckbox.checked;
-    toggleSelection(uploadCheckbox, [uploadCheckbox, clientDatasetCheckbox]);
-  }
-});
-
-document.getElementById("miyoItem").addEventListener("click", e => {
-  if (!e.target.closest(".compare-page-checkbox")) {
-    miyoCheckbox.checked = !miyoCheckbox.checked;
-    toggleSelection(miyoCheckbox, [miyoCheckbox, clientDatasetRightCheckbox]);
-  }
-});
-
-document.getElementById("clientDatasetRight").addEventListener("click", e => {
-  if (!e.target.closest(".compare-page-checkbox")) {
-    clientDatasetRightCheckbox.checked = !clientDatasetRightCheckbox.checked;
-    toggleSelection(clientDatasetRightCheckbox, [miyoCheckbox, clientDatasetRightCheckbox]);
-  }
-});
-
-// File upload logic
-fileInputUpload.addEventListener("change", e => handleFileUpload(e.target.files));
-
-uploadItem.addEventListener("dragover", e => {
-  e.preventDefault();
-  uploadItem.classList.add("dragover");
-});
-
-uploadItem.addEventListener("dragleave", () => {
-  uploadItem.classList.remove("dragover");
-});
-
-uploadItem.addEventListener("drop", e => {
-  e.preventDefault();
-  uploadItem.classList.remove("dragover");
-  if (e.dataTransfer.files.length > 0) {
-    handleFileUpload(e.dataTransfer.files);
-  }
-});
-
-function handleFileUpload(files) {
-  const uploadedFilesList = document.getElementById("uploadedFilesList");
-  uploadedFilesList.innerHTML = "";
-
-  if (files.length > 0) {
-    uploadCheckbox.checked = true;
-    toggleSelection(uploadCheckbox, [uploadCheckbox, clientDatasetCheckbox]);
-    uploadItem.classList.add("uploaded");
-
-    Array.from(files).forEach(file => {
-      const fileType = file.name.split(".").pop().toLowerCase();
-      const iconSrc = getFileIcon(fileType);
-
-      const fileEntry = document.createElement("div");
-      fileEntry.classList.add("uploaded-file-item");
-
-      const fileIcon = document.createElement("img");
-      fileIcon.src = iconSrc;
-      fileIcon.alt = `${fileType} icon`;
-
-      const fileName = document.createElement("span");
-      fileName.textContent = file.name;
-
-      const removeBtn = document.createElement("button");
-      removeBtn.classList.add("uploaded-file-remove");
-      removeBtn.innerHTML = "&times;";
-
-      removeBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        fileEntry.remove();
-
-        if (uploadedFilesList.children.length === 0) {
-          uploadItem.classList.remove("uploaded");
-          uploadCheckbox.checked = false;
-          updateButtonState();
+function toggleSource(key) {
+    if (selectedSource === key) {
+        selectedSource = null;
+    } else {
+        if (selectedSource) {
+            document.getElementById(sourceMap[selectedSource]).checked = false;
+            document.getElementById(itemEls[selectedSource]).classList.remove('selected');
         }
-      });
-
-      fileEntry.append(fileIcon, fileName, removeBtn);
-      uploadedFilesList.appendChild(fileEntry);
-    });
-
-    showPopup("✅ File(s) uploaded successfully!");
-  } else {
-    uploadedFilesList.innerHTML = "";
-    uploadItem.classList.remove("uploaded");
-  }
+        selectedSource = key;
+    }
+    const isChecked = selectedSource === key;
+    document.getElementById(sourceMap[key]).checked = isChecked;
+    document.getElementById(itemEls[key]).classList.toggle('selected', isChecked);
+    updateCompareBtn();
 }
 
-function getFileIcon(ext) {
-  switch (ext) {
-    case "pdf": return "file-icons/pdf.png";
-    case "doc":
-    case "docx": return "file-icons/word.png";
-    case "xls":
-    case "xlsx": return "file-icons/excel.png";
-    case "png":
-    case "jpg":
-    case "jpeg":
-    case "gif": return "file-icons/image.png";
-    case "csv": return "file-icons/excel.png";
-    default: return "file-icons/folder.png";
-  }
+function toggleCompare(key) {
+    if (selectedCompare === key) {
+        selectedCompare = null;
+    } else {
+        if (selectedCompare) {
+            document.getElementById(compareMap[selectedCompare]).checked = false;
+            document.getElementById(itemEls[selectedCompare]).classList.remove('selected');
+        }
+        selectedCompare = key;
+    }
+    const isChecked = selectedCompare === key;
+    document.getElementById(compareMap[key]).checked = isChecked;
+    document.getElementById(itemEls[key]).classList.toggle('selected', isChecked);
+    updateCompareBtn();
 }
 
-function renderResultCard(result, allMatches) {
-  const card = document.createElement("div");
-  card.className = "result-card";
-
-  const imgClass = result.imgSim > 50 ? "high" : "low";
-  const textClass = result.textSim > 50 ? "high" : "low";
-
-  card.innerHTML = `
-    <div class="card-top">
-      <div class="card-icon">
-        <img src="/logo/${result.id}" alt="Trademark Logo">
-      </div>
-      <div class="card-label">${result.label}</div>
-      <div class="card-similarities">
-        <div class="similarity-item">
-          <span class="similarity-label">Image Similarity</span>
-          <span class="similarity-percentage ${imgClass}">${result.imgSim}%</span>
-        </div>
-        <div class="similarity-item">
-          <span class="similarity-label">Text Similarity</span>
-          <span class="similarity-percentage ${textClass}">${result.textSim}%</span>
-        </div>
-      </div>
-    </div>
-  `;
-
-  // PASS BOTH the specific result and the full list of matches to the modal
-  card.addEventListener("click", () => openDetailModal(result, allMatches));
-  resultsGrid.appendChild(card);
+function updateCompareBtn() {
+    const btn = document.getElementById('compareBtn');
+    const hasSource = selectedSource === 'clientLeft' || (selectedSource === 'upload' && uploadedFiles.length > 0);
+    const hasCompare = !!selectedCompare;
+    btn.disabled = !(hasSource && hasCompare);
 }
 
-compareBtn.addEventListener("click", async () => {
-    const isClientSource = clientDatasetCheckbox.checked;
-    const sourceCategory = isClientSource ? "CLIENT" : "UPLOAD";
+/**
+ * FILE UPLOAD & DRAG/DROP
+ */
+function handleDragOver(e, id) {
+    e.preventDefault();
+    document.getElementById(id).classList.add('dragover');
+}
 
-    const isClientTarget = clientDatasetRightCheckbox.checked;
-    const targetType = isClientTarget ? "CLIENT" : "MYIPO";
+function handleDragLeave(id) {
+    document.getElementById(id).classList.remove('dragover');
+}
 
-    if (!isClientSource && fileInputUpload.files.length === 0) {
-        showPopup("Please upload a file first!", true);
+function handleDrop(e, id) {
+    e.preventDefault();
+    document.getElementById(id).classList.remove('dragover');
+    processFiles(Array.from(e.dataTransfer.files));
+}
+
+function handleFileUpload(e) {
+    processFiles(Array.from(e.target.files));
+    e.target.value = ''; // Reset input
+}
+
+function processFiles(files) {
+    if (files.length > 0) {
+        uploadedFiles = [files[0]]; // Handle one file for now
+        const fileName = files[0].name.toLowerCase();
+        currentMode = fileName.endsWith('.pdf') ? 'pdf' : 'image';
+        
+        renderUploadPreviews();
+        if (selectedSource !== 'upload') toggleSource('upload');
+        showPopup("✅ File uploaded successfully!");
+    }
+}
+
+function renderUploadPreviews() {
+    const grid = document.getElementById('uploadPreviewGrid');
+    const count = document.getElementById('uploadFileCount');
+    const item = document.getElementById('uploadItem');
+
+    // SAFETY CHECK: If the elements don't exist, stop the function
+    if (!grid || !count || !item) {
+        console.warn("Upload preview elements not found in DOM.");
         return;
     }
 
+    if (uploadedFiles.length === 0) {
+        grid.innerHTML = '';
+        count.textContent = '';
+        item.classList.remove('has-files');
+        return;
+    }
+
+    item.classList.add('has-files');
+    const file = uploadedFiles[0];
+    count.textContent = file.name;
+    grid.innerHTML = '';
+
+    const tile = document.createElement('div');
+    tile.className = 'upload-preview-tile';
+
+    if (currentMode === 'pdf') {
+        tile.innerHTML = `
+            <div class="pdf-preview-tile-inner"><span class="pdf-icon">📄</span></div>
+            <button class="preview-remove-btn" onclick="removeFile(event)">✕</button>`;
+    } else {
+        const img = document.createElement('img');
+        img.className = 'preview-img';
+        const reader = new FileReader();
+        reader.onload = e => img.src = e.target.result;
+        reader.readAsDataURL(file);
+        
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'preview-remove-btn';
+        removeBtn.innerHTML = '✕';
+        removeBtn.onclick = removeFile;
+        
+        tile.appendChild(img);
+        tile.appendChild(removeBtn);
+    }
+    grid.appendChild(tile);
+}
+
+function removeFile(e) {
+    e.stopPropagation();
+    uploadedFiles = [];
+    renderUploadPreviews();
+    if (selectedSource === 'upload') toggleSource('upload');
+}
+
+/**
+ * API EXECUTION (THE CORE)
+ */
+async function runCompare() {
     const loadingSection = document.getElementById("loadingSection");
     const resultsSection = document.getElementById("resultsSection");
     const progressFill = document.querySelector(".progress-fill");
+    const resetBtn = document.getElementById("resetBtn");
 
-    resultsGrid.innerHTML = "";
+    // UI Prep
     resultsSection.classList.remove("show");
     loadingSection.classList.add("show");
     progressFill.style.width = "30%";
+    resetBtn.style.display = "none";
 
     const formData = new FormData();
-    if (!isClientSource) {
-        formData.append("file", fileInputUpload.files[0]);
+    if (selectedSource === 'upload') {
+        formData.append("file", uploadedFiles[0]);
+        formData.append("source_category", "UPLOAD");
+    } else {
+        formData.append("source_category", "CLIENT");
     }
-    formData.append("source_category", sourceCategory);
+    
+    const targetType = selectedCompare === 'myipo' ? "MYIPO" : "CLIENT";
     formData.append("target", targetType);
 
     try {
@@ -226,135 +201,166 @@ compareBtn.addEventListener("click", async () => {
         });
 
         const results = await response.json();
+        if (!response.ok || results.error) throw new Error(results.error || "Comparison failed");
 
-        if (!response.ok || results.error) {
-            throw new Error(results.error || "Comparison failed");
-        }
-
-        loadingSection.classList.remove("show");
-        resultsSection.classList.add("show");
-
-        // IMAGE upload
-        if (Array.isArray(results) && results.length && !results[0].matches) {
-            results.forEach(res => renderResultCard(res, results));
-        }
-        // PDF / CLIENT
-        else {
-            results.forEach(group => {
-                // We pass group.matches as the second argument here
-                group.matches.forEach(res => renderResultCard(res, group.matches));
-            });
-        }
+        lastComparisonResults = results;
+        
+        // Final UI Updates
+        progressFill.style.width = "100%";
+        setTimeout(() => {
+            loadingSection.classList.remove("show");
+            renderResults(results);
+            resultsSection.classList.add("show");
+            resetBtn.style.display = "inline-flex";
+            resultsSection.scrollIntoView({ behavior: 'smooth' });
+        }, 500);
 
     } catch (error) {
         loadingSection.classList.remove("show");
         showPopup("Error: " + error.message, true);
     }
-});
-
-function showPopup(message, isError = false) {
-  let popup = document.querySelector(".compare-page-popup");
-  if (!popup) {
-    popup = document.createElement("div");
-    popup.className = "compare-page-popup";
-    document.body.appendChild(popup);
-  }
-  popup.textContent = message;
-  popup.classList.add("show");
-  popup.classList.toggle("error", isError);
-  setTimeout(() => popup.classList.remove("show"), 3000);
 }
 
-updateVisualState();
-updateButtonState();
+/**
+ * RENDERING RESULTS
+ */
+function renderResults(data) {
+    const srcLabel = selectedSource === 'upload' ? 'Uploaded File' : 'Client Dataset';
+    const cmpLabel = selectedCompare === 'myipo' ? 'MYIPO Journals' : 'Client Dataset';
+    document.getElementById('comparisonInfo').textContent = `Comparing ${srcLabel} with ${cmpLabel}`;
 
-// ===== DETAIL MODAL FUNCTIONALITY =====
-function openDetailModal(data, allMatches = []) {
-  // --- Check if data is exists and getting fetched correctly ---
-  console.log("Modal Data Received:", data);
-  // --- CLARIFICATION LOGS ---
-  console.group("🔍 Score Calculation Breakdown");
-  console.log(`Company: ${data.label}`);
-  console.log(`1. Image Similarity (AI): ${data.imgSim}%`);
-  console.log(`2. Text Similarity (AI + Literal): ${data.textSim}%`);
-  console.log(`3. Final Weighted Match Score: ${data.totalSim}%`);
-  console.log("Calculation Logic: (Literal Match * 0.4) + (Text AI * 0.4) + (Image AI * 0.2)");
-  console.groupEnd();
+    // Determine if we are in grouped (PDF) or flat (Single Image) mode
+    const isGrouped = Array.isArray(data) && data.length > 0 && data[0].matches;
 
-  if (allMatches.length > 0) {
-      console.log("📊 Top 3 Matches Raw Data:", allMatches.slice(0, 3));
-  }
-  // 1. Fill main fields
-  document.getElementById("modalImage").src = `/logo/${data.id}`;
-  document.getElementById("modalCompanyName").textContent = data.label || "N/A";
-  document.getElementById("modalImageSim").textContent = `${data.imgSim}%`;
-  document.getElementById("modalTextSim").textContent = `${data.textSim}%`;
-  document.getElementById("modalTrademarkNum").textContent = data.serial || data.modalTrademarkNum || "N/A";
-  document.getElementById("modalClass").textContent = data.modalClass || "N/A";
-  document.getElementById("modalAgent").textContent = data.modalAgent || "N/A";
-  document.getElementById("modalDescription").textContent = data.description || data.modalDescription || "N/A";
+    if (isGrouped) {
+        renderPDFMode(data);
+    } else {
+        renderImageMode(data);
+    }
+}
 
-  // 2. Populate Top 3 Matches List
-  const matchesList = document.getElementById("modalMatchesList");
-  matchesList.innerHTML = ""; // Clear existing
+function renderImageMode(results) {
+    const grid = document.getElementById('resultsGrid');
+    document.getElementById('sourceBlocks').innerHTML = '';
+    grid.innerHTML = '';
+    
+    document.getElementById('resultsCount').textContent = `${results.length} matches found`;
 
-  // Filter out the current item so it doesn't show itself as a match
-  const others = allMatches.filter(m => m.id !== data.id).slice(0, 3);
-
-  if (others.length === 0) {
-    matchesList.innerHTML = "<p style='color: #888; padding: 10px; font-style: italic;'>No other similar matches found.</p>";
-  } else {
-    others.forEach(m => {
-      const matchItem = document.createElement("div");
-      matchItem.className = "modal-match-row"; 
-      // Add inline styles for a clean list look
-      matchItem.style = "display: flex; align-items: center; gap: 15px; padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; transition: background 0.2s;";
-      
-      matchItem.innerHTML = `
-        <img src="/logo/${m.id}" style="width: 45px; height: 45px; object-fit: contain; background: #fff; border: 1px solid #ddd; border-radius: 4px;">
-        <div style="flex: 1;">
-          <div style="font-weight: 600; font-size: 0.9rem; color: #333;">${m.label}</div>
-          <div style="font-size: 0.8rem; color: #666;">${m.serial || m.modalTrademarkNum}</div>
-        </div>
-        <div style="text-align: right;">
-          <div style="font-weight: bold; color: #4f46e5;">${m.totalSim}%</div>
-          <div style="font-size: 0.7rem; color: #999;">Match Score</div>
-        </div>
-      `;
-
-      // Allow user to click a "Top 3" item to switch the modal to that trademark
-      matchItem.addEventListener("click", (e) => {
-        e.stopPropagation();
-        openDetailModal(m, allMatches);
-      });
-
-      // Hover effect
-      matchItem.onmouseenter = () => matchItem.style.background = "#f1f5f9";
-      matchItem.onmouseleave = () => matchItem.style.background = "transparent";
-
-      matchesList.appendChild(matchItem);
+    results.forEach((res, i) => {
+        const high = res.imgSim >= 80;
+        const card = document.createElement('div');
+        card.className = 'result-card';
+        card.style.animationDelay = `${i * 0.05}s`;
+        card.innerHTML = `
+            <div class="card-top">
+                <div class="card-icon-img">
+                    <img src="/logo/${res.id}" onerror="this.src='/static/images/placeholder.png'">
+                </div>
+                <div class="card-similarities">
+                    <div class="similarity-item">
+                        <span class="similarity-label">Image Similarity</span>
+                        <span class="similarity-percentage ${high ? 'high' : 'low'}">${res.imgSim}%</span>
+                    </div>
+                    <div class="similarity-item">
+                        <span class="similarity-label">Text Similarity</span>
+                        <span class="similarity-percentage ${res.textSim >= 80 ? 'high' : 'low'}">${res.textSim}%</span>
+                    </div>
+                </div>
+                <div class="card-label">${res.label}</div>
+            </div>`;
+        card.onclick = () => openModal(res, results);
+        grid.appendChild(card);
     });
-  }
-
-  const detailModal = document.getElementById("detailModal");
-  detailModal.classList.add("show");
 }
 
-function closeDetailModal() {
-  detailModal.classList.remove("show");
+function renderPDFMode(groups) {
+    const sourceBlocks = document.getElementById('sourceBlocks');
+    if (!sourceBlocks) return; // Safety check
+    
+    document.getElementById('resultsGrid').innerHTML = '';
+    sourceBlocks.innerHTML = '';
+
+    let totalMatches = 0;
+
+    groups.forEach((group, bi) => {
+        totalMatches += group.matches.length;
+        const block = document.createElement('div');
+        block.className = 'source-block';
+        block.style.animationDelay = `${bi * 0.07}s`;
+
+        const header = document.createElement('div');
+        header.className = 'source-block-header';
+        header.innerHTML = `
+            <div class="source-meta"><div class="tm-label">Source Item #${bi + 1}</div></div>
+            <span class="match-count-badge has-matches">${group.matches.length} matches</span>`;
+        
+        const matchList = document.createElement('div');
+        matchList.className = 'match-list';
+
+        group.matches.forEach(m => {
+            const row = document.createElement('div');
+            row.className = 'match-row';
+            row.onclick = () => openModal(m, group.matches); // Cleaner than inline strings
+            row.innerHTML = `
+                <div class="match-thumb"><img src="/logo/${m.id}"></div>
+                <div class="match-info">
+                    <div class="match-name">${m.label}</div>
+                    <div class="match-meta">Score: ${m.totalSim}%</div>
+                </div>
+                <span class="score-pill ${m.totalSim >= 80 ? 'high' : 'mid'}">${m.totalSim}%</span>`;
+            matchList.appendChild(row);
+        });
+
+        block.appendChild(header);
+        block.appendChild(matchList);
+        sourceBlocks.appendChild(block);
+    });
+    document.getElementById('resultsCount').textContent = `${totalMatches} total matches`;
 }
 
-modalClose.addEventListener("click", closeDetailModal);
-detailModal.addEventListener("click", (e) => { if (e.target === detailModal) closeDetailModal(); });
+/**
+ * MODAL & PDF REPORT
+ */
+function openModal(data, allMatches = []) {
+    const wrap = document.getElementById('modalImageWrap');
+    wrap.innerHTML = `<img src="/logo/${data.id}" style="width:100%;height:100%;object-fit:contain;">`;
 
-// Need do this to generate report
-// document.getElementById("modalDownload").addEventListener("click", () => {
-//   showPopup("📄 Downloading report...");
-// });
-document.getElementById("modalDownload").addEventListener("click", function() {
-    // 1. Gather all data currently in the modal
-    // We get the ID from the logo URL (e.g., /logo/26145)
-    const logoSrc = document.getElementById("modalImage").src;
+    document.getElementById("modalCompanyName").textContent = data.label || "N/A";
+    document.getElementById("modalImageSim").textContent = `${data.imgSim}%`;
+    document.getElementById("modalTextSim").textContent = `${data.textSim}%`;
+    document.getElementById("modalTrademarkNum").textContent = data.serial || "N/A";
+    document.getElementById("modalClass").textContent = data.modalClass || "N/A";
+    document.getElementById("modalAgent").textContent = data.modalAgent || "N/A";
+    document.getElementById("modalDescription").textContent = data.description || "N/A";
+
+    const matchesList = document.getElementById("modalMatchesList");
+    matchesList.innerHTML = "";
+
+    const others = allMatches.filter(m => m.id !== data.id).slice(0, 3);
+    others.forEach(m => {
+        const item = document.createElement('div');
+        item.className = 'modal-match-row';
+        item.style = "display: flex; align-items: center; gap: 15px; padding: 12px; border-bottom: 1px solid #eee; cursor: pointer;";
+        item.innerHTML = `
+            <img src="/logo/${m.id}" style="width: 45px; height: 45px; object-fit: contain;">
+            <div style="flex: 1;">
+                <div style="font-weight: 600;">${m.label}</div>
+                <div style="font-size: 0.8rem;">${m.serial || ''}</div>
+            </div>
+            <div style="font-weight: bold; color: #4f46e5;">${m.totalSim}%</div>`;
+        item.onclick = () => openModal(m, allMatches);
+        matchesList.appendChild(item);
+    });
+
+    document.getElementById('detailModal').classList.add('show');
+}
+
+function closeModal() {
+    document.getElementById('detailModal').classList.remove('show');
+}
+
+document.getElementById("modalDownload").onclick = async function() {
+    const logoSrc = document.querySelector("#modalImageWrap img").src;
     const trademarkId = logoSrc.split('/').pop();
 
     const reportData = {
@@ -368,43 +374,46 @@ document.getElementById("modalDownload").addEventListener("click", function() {
         description: document.getElementById("modalDescription").textContent
     };
 
-    showPopup("📄 Generating professional PDF report...");
+    showPopup("📄 Generating PDF report...");
 
-    // 2. Send to backend
-    fetch('/api/generate_pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(reportData)
-    })
-    .then(response => {
-        if (!response.ok) throw new Error("PDF generation failed");
-        return response.blob();
-    })
-    .then(blob => {
-        // 3. Trigger actual browser download
+    try {
+        const response = await fetch('/api/generate_pdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(reportData)
+        });
+        const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `Trademark_Report_${reportData.serial}.pdf`;
-        document.body.appendChild(a);
+        a.download = `Report_${reportData.serial}.pdf`;
         a.click();
-        a.remove();
-    })
-    .catch(err => {
-        console.error(err);
-        showPopup("❌ Error generating PDF");
-    });
-});
+    } catch (err) {
+        showPopup("❌ PDF failed", true);
+    }
+};
 
-document.querySelectorAll('.match-badge').forEach(badge => {
-  const matchText = badge.textContent;
-  const matchValue = parseFloat(matchText.match(/([\d.]+)%/)[1]); // extract number before '%'
-  
-  if (matchValue > 50) {
-    badge.classList.add('high'); // red
-  } else {
-    badge.classList.remove('high'); // light grey
-  }
-});
+/**
+ * RESET
+ */
+function resetCompare() {
+    selectedSource = null;
+    selectedCompare = null;
+    uploadedFiles = [];
+    
+    document.querySelectorAll('.compare-page-checkbox').forEach(cb => cb.checked = false);
+    document.querySelectorAll('.compare-page-item').forEach(el => el.classList.remove('selected', 'has-files'));
+    
+    renderUploadPreviews();
+    document.getElementById('resultsSection').classList.remove('show');
+    document.getElementById('compareBtn').disabled = true;
+    document.getElementById('resetBtn').style.display = 'none';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
 
-
+function showPopup(msg, isError = false) {
+    const el = document.getElementById('comparePopup');
+    el.textContent = msg;
+    el.className = 'compare-page-popup show' + (isError ? ' error' : '');
+    setTimeout(() => el.classList.remove('show'), 3000);
+}
