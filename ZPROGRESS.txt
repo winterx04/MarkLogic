@@ -44,3 +44,6 @@ Logo have diff text (Make it dynamic/robust to detect)
 
 4/3/2026:
 - Need fix the logo (Might be detecting whitespace as similarity)
+
+
+Need fix UI for showing similarity (comparison for PDF)
