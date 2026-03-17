@@ -1,0 +1,49 @@
+8/2/2026: ✔
+- Add 'category' column where MYIPO as default else Client
+- Added pdf_extractor.py
+- At database.py, modified insert_trademark FUNCTION  
+- Modified ml_utils.py
+- App.py added 2 new route for admin regarding adding dataset
+    o Need to redo route again as it dataset.html differs to MYIPO & Client
+
+
+10/2/2026:
+- In dataset, Client only upload images while MYIPO is Journal (PDF)          
+- Create a print function to show how similarity is calculated in Console 
+- Comparison with something similar                ✔
+- Create 1 more role 'Manager' where functionalities are same as Admin (TODO)  ✔
+
+
+11/2/2026:
+- Redo pdf_extractor.py
+- Whole day doing pdf_extractor.py, currently still have issue on some data column. 
+    o Should improve image extraction (TODO)
+    o Data allocation to their own column (TODO)
+- client dataset der database  ✔
+- comparison for text similarity  ✔
+
+
+24/2/2026:
+- Manage dataset when search need show .pdf to download
+
+
+2/3/2026:
+Need show users themselves what they uploaded followed by their output.
+Need show all similar (Top 3 matches to All similar{make it based on Threshold >70% })
+
+Logo have diff text (Make it dynamic/robust to detect)
+
+
+3/3/2026:
+1. User role can see "Dataset" need remove
+2. Manage Dataset part have issue as any search result will display .pdf either way need fix (Validation)
+    - Ex. search 1/2033 (Exceed 2026 should be error)
+    - Ex. search 1/2033 still show 1/2022 results
+3. Add footer @copyright
+
+
+4/3/2026:
+- Need fix the logo (Might be detecting whitespace as similarity)
+
+
+Need fix UI for showing similarity (comparison for PDF)

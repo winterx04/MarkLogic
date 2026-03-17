@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <!-- Use url_for for static assets -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <!-- Video Background -->
+    <div class="video-background">
+        <video autoplay muted loop playsinline>
+            <source src="{{ url_for('static', filename='background/menu-background-3.mp4') }}" type="video/mp4">
+        </video>
+    </div>
+
+    <!-- Header Logo -->
+    <div class="header-logo">
+        <div class="header-logo-image">
+            <img src="{{ url_for('static', filename='icons/logo.png') }}" alt="MarkLogic Logo">
+        </div>
+        <div class="header-brand">
+            <div class="header-brand-name">MarkLogic</div>
+            <div class="header-slogan">Admin Dashboard</div>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- APPLY THE NEW CLASS HERE -->
+        <div class="menu-container admin-single-row-menu">
+
+            <!-- Card 1: Compare -->
+            <a href="{{ url_for('compare') }}" class="menu-card">
+                <div class="menu-icon"><img src="{{ url_for('static', filename='icons/compare.png') }}" alt="Compare Icon"></div>
+                <div class="menu-content">
+                    <h3 class="menu-title">Compare</h3>
+                    <p class="menu-description">Compare trademarks instantly to detect similarities and conflicts.</p>
+                </div>
+                <div class="menu-arrow"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
+            </a>
+
+            <!-- Card 2: Search -->
+            <a href="{{ url_for('search') }}" class="menu-card">
+                <div class="menu-icon"><img src="{{ url_for('static', filename='icons/search.png') }}" alt="Search Icon"></div>
+                <div class="menu-content">
+                    <h3 class="menu-title">Search</h3>
+                    <p class="menu-description">Quickly search trademarks by name, keywords, or logo features.</p>
+                </div>
+                <div class="menu-arrow"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
+            </a>
+
+            <!-- Card 3: Dataset -->
+            <a href="#" class="menu-card" id="datasetMenuCard">
+                <div class="menu-icon"><img src="{{ url_for('static', filename='icons/dataset.png') }}" alt="Dataset Icon"></div>
+                <div class="menu-content">
+                    <h3 class="menu-title">Dataset</h3>
+                    <p class="menu-description">Upload new trademark journals to keep the system updated.</p>
+                </div>
+                <div class="menu-arrow"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
+            </a>
+            
+            {% if session.role and session.role.lower() == 'admin' %}
+                <!-- Card 4: User Management -->
+                <a href="{{ url_for('user_management') }}" class="menu-card">
+                    <div class="menu-icon"><img src="{{ url_for('static', filename='icons/admin.png') }}" alt="User Management Icon"></div>
+                    <div class="menu-content">
+                        <h3 class="menu-title">Users</h3>
+                        <p class="menu-description">Add, remove, and manage user roles and permissions.</p>
+                    </div>
+                    <div class="menu-arrow"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
+                </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Dataset Modal (Stays the same) -->
+    <div class="dataset-modal-overlay" id="datasetModal">
+        <div class="dataset-modal-box">
+            <h2 class="dataset-modal-title">Choose Dataset</h2>
+            <p class="dataset-modal-subtitle">Select which dataset you would like to access</p>
+            <div class="dataset-modal-buttons">
+                <a href="{{ url_for('client_dataset', type='client') }}" class="dataset-modal-btn">Client Dataset</a>
+                <a href="{{ url_for('dataset', type='myipo') }}" class="dataset-modal-btn">MYIPO Dataset</a>
+                <button class="dataset-modal-btn dataset-modal-cancel" id="modalCancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const datasetMenuCard = document.getElementById('datasetMenuCard');
+        const datasetModal = document.getElementById('datasetModal');
+        const modalCancel = document.getElementById('modalCancel');
+
+        if (datasetMenuCard) {
+            datasetMenuCard.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (datasetModal) datasetModal.classList.add('show');
+            });
+        }
+        if (modalCancel) {
+            modalCancel.addEventListener('click', () => {
+                if (datasetModal) datasetModal.classList.remove('show');
+            });
+        }
+        if (datasetModal) {
+            datasetModal.addEventListener('click', (e) => {
+                if (e.target === datasetModal) {
+                    datasetModal.classList.remove('show');
+                }
+            });
+        }
+    </script>
+    <script src="{{ url_for('static', filename='utils.js') }}"></script>
+    <script src="{{ url_for('static', filename='logout.js') }}"></script>
+</body>
+<footer class="footer">
+    <p>&copy; 2026 SKRINE</p>
+</footer>
+</html>

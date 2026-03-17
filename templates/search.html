@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Search</title>
+  <!-- Use url_for for static assets -->
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/favicon.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <!-- Static Background -->
+  <div class="image-background"></div>
+
+  <!-- Header Logo: Update link to use url_for -->
+  <a href="{{ url_for('menu') }}" style="text-decoration: none; color: inherit;">
+    <div class="header-logo">
+      <div class="header-logo-image">
+        <img src="{{ url_for('static', filename='icons/logo.png') }}" alt="MarkLogic Logo">
+      </div>
+      <div class="header-brand">
+        <div class="header-brand-name">MarkLogic</div>
+        <div class="header-slogan">Stop Searching. Start Finding</div>
+      </div>
+    </div>
+  </a>
+
+  <!-- Main Container -->
+  <div class="search-main-container">
+    <h1 class="search-page-title">Search</h1>
+
+    <div class="search-layout">
+      <!-- Upload Area -->
+      <div class="search-upload-area" id="uploadArea">
+        <div class="search-upload-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+        </div>
+        <div class="search-upload-text">
+          Drag & drop a file or <span class="browse">Browse</span>
+        </div>
+        <div class="search-upload-formats">
+          Supported formats: JPEG, JPG, PNG, GIF
+        </div>
+        <input type="file" id="fileInput" class="search-file-input" accept="image/*">
+      </div>
+
+      <!-- Divider -->
+      <div class="search-divider"></div>
+
+      <!-- Form Section -->
+      <div class="search-form-section">
+        <div class="search-form-group">
+          <label class="search-form-label">Words-in-Trademark</label>
+          <input type="text" class="search-form-input" id="wordsInput" placeholder="Enter trademark words">
+        </div>
+
+        <div class="search-form-group">
+          <label class="search-form-label">Class</label>
+          <input type="text" class="search-form-input" id="classInput" placeholder="Enter class">
+        </div>
+
+        <button class="search-button" id="searchBtn">Search</button>
+      </div>
+    </div>
+
+    <!-- Results Section -->
+    <div class="results-section" id="resultsSection">
+      <div class="results-table-container">
+        <table class="results-table">
+          <thead>
+            <tr>
+              <th class="trademark-cell">Trademark</th>
+              <th>Class</th>
+              <th class="id-cell">Serial Number</th> 
+              <th>Applicant</th>
+              <th >Agent Details</th>
+              <th>Description</th> 
+            </tr>
+          </thead>
+          <tbody id="resultsBody">
+            <!-- DYNAMIC CONTENT: Loop through trademarks from the database -->
+            {% for trademark in trademarks %}
+            <tr>
+              <td class="trademark-cell">
+                <!-- Check if a logo exists for this trademark -->
+                {% if trademark.has_logo %}
+                <div class="trademark-image">
+                    <!-- Dynamically generate the URL for the logo -->
+                    <img src="{{ url_for('get_trademark_logo', trademark_id=trademark.id) }}" alt="Trademark Logo">
+                </div>
+                {% else %}
+                <div class="trademark-image no-logo">
+                    <span>No Logo</span>
+                </div>
+                {% endif %}
+              </td>
+              <td>{{ trademark.class_indices or 'N/A' }}</td>
+              <td class="id-cell">{{ trademark.serial_number or 'N/A' }}</td>
+              <td>{{ trademark.applicant_name or 'N/A' }}</td>
+              <td>{{ trademark.agent_details or 'N/A' }}</td>
+              <td>{{ trademark.description or 'N/A' }}</td>
+            </tr>
+            {% endfor %}
+            <!-- End of dynamic content -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+<script src="{{ url_for('static', filename='search.js') }}"></script>
+<script src="{{ url_for('static', filename='logout.js') }}"></script>
+</body>
+<footer class="footer">
+    <p>&copy; 2026 SKRINE</p>
+</footer>
+</html>
