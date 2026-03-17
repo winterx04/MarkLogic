@@ -5023,9 +5023,15 @@ color: #000;
       word-break: break-all;
       max-width: 90%;
       overflow: hidden;
+
       display: -webkit-box;
-      -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
+
+      /* Add this 👇 */
+      line-clamp: 2;
+
+      /* Keep this 👇 */
+      -webkit-line-clamp: 2;
     }
 
     .preview-remove-btn {

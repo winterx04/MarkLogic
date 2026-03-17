@@ -1,18 +1,15 @@
-import math
-import fitz
 import io
-import sys
+import cv2
 import secrets 
 import numpy as np
 import faiss
-from flask import Flask, json, jsonify, render_template, request, redirect, url_for, flash, send_file, session, Response
+from flask import Flask, json, jsonify, render_template, request, redirect, url_for, flash, send_file, session, Response, abort
 from functools import wraps
 import psycopg2
 import psycopg2.extras
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_mail import Mail, Message
-from PIL import Image
-from flask import abort  
+from PIL import Image as PILImage 
 import traceback
 import re
 import database as db 
@@ -22,6 +19,8 @@ from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
+import imagehash
+from difflib import SequenceMatcher
 
 app = Flask(__name__)
 app.secret_key = 'a_secure_random_secret_key'
@@ -562,7 +561,7 @@ def compare():
 # ==========================================
 def extract_logo_from_bytes(img_bytes, white_thresh=240):
     try:
-        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        img = PILImage.open(io.BytesIO(img_bytes)).convert("RGB")
         arr = np.array(img)
         mask = np.any(arr < white_thresh, axis=2)
         col_sums = np.sum(mask, axis=0)
@@ -607,9 +606,109 @@ def extract_logo_from_bytes(img_bytes, white_thresh=240):
         tight_crop.save(buf, format="PNG")
         return buf.getvalue()
     except Exception as e:
-        print(f"⚠️ 智能提取 Logo 失败 (Fallback 到原图): {e}")
+        print(f"⚠️ AI Failed to Retrieve Logo (Fallback to Original Image): {e}")
         return img_bytes
 
+# Test for improving similarity accuracy starts here ---------------- 14/3/2026
+#
+#
+#
+def phash_score_bytes(b1: bytes, b2: bytes) -> float:
+    try:
+        h1 = imagehash.phash(PILImage.open(io.BytesIO(b1)).convert('RGB'))
+        h2 = imagehash.phash(PILImage.open(io.BytesIO(b2)).convert('RGB'))
+        dist = (h1 - h2)
+        # max bits 64 for phash -> normalize
+        return max(0.0, 1.0 - dist / 64.0)
+    except Exception:
+        return 0.0
+
+def orb_match_score_bytes(b1: bytes, b2: bytes) -> float:
+    try:
+        a = cv2.imdecode(np.frombuffer(b1, np.uint8), cv2.IMREAD_GRAYSCALE)
+        b = cv2.imdecode(np.frombuffer(b2, np.uint8), cv2.IMREAD_GRAYSCALE)
+        if a is None or b is None: return 0.0
+
+        orb = cv2.ORB_create(500)
+        k1, d1 = orb.detectAndCompute(a, None)
+        k2, d2 = orb.detectAndCompute(b, None)
+        if d1 is None or d2 is None: return 0.0
+
+        bf = cv2.BFMatcher(cv2.NORM_HAMMING)
+        matches = bf.knnMatch(d1, d2, k=2)
+        good = 0
+        for m_n in matches:
+            if len(m_n) < 2:
+                continue
+            m, n = m_n
+            if m.distance < 0.75 * n.distance:
+                good += 1
+        # normalize by minimum keypoints to avoid inflation
+        denom = max(1, min(len(k1), len(k2)))
+        return float(good) / denom
+    except Exception:
+        return 0.0
+
+def orb_similarity(img_bytes1, img_bytes2):
+    try:
+        img1 = cv2.imdecode(np.frombuffer(img_bytes1, np.uint8), cv2.IMREAD_GRAYSCALE)
+        img2 = cv2.imdecode(np.frombuffer(img_bytes2, np.uint8), cv2.IMREAD_GRAYSCALE)
+
+        orb = cv2.ORB_create(500)
+
+        k1, d1 = orb.detectAndCompute(img1, None)
+        k2, d2 = orb.detectAndCompute(img2, None)
+
+        if d1 is None or d2 is None:
+            return 0.0
+
+        bf = cv2.BFMatcher(cv2.NORM_HAMMING)
+        matches = bf.knnMatch(d1, d2, k=2)
+
+        good = 0
+        for m, n in matches:
+            if m.distance < 0.75 * n.distance:
+                good += 1
+
+        return good / max(len(k1), 1)
+
+    except:
+        return 0.0
+
+# edge filter
+def edge_similarity(img_bytes1, img_bytes2):
+    try:
+        img1 = cv2.imdecode(np.frombuffer(img_bytes1, np.uint8), cv2.IMREAD_GRAYSCALE)
+        img2 = cv2.imdecode(np.frombuffer(img_bytes2, np.uint8), cv2.IMREAD_GRAYSCALE)
+
+        img1 = cv2.resize(img1, (128,128))
+        img2 = cv2.resize(img2, (128,128))
+
+        e1 = cv2.Canny(img1, 100, 200)
+        e2 = cv2.Canny(img2, 100, 200)
+
+        diff = np.sum(np.abs(e1.astype("float") - e2.astype("float")))
+        sim = 1 - diff / (128*128*255)
+
+        return max(sim,0)
+
+    except:
+        return 0.0
+    
+# Name/text similarity helpers (0..1)
+def seq_ratio(a: str, b: str) -> float:
+    return SequenceMatcher(None, (a or "").lower(), (b or "").lower()).ratio()
+
+def jaccard_tokens(a: str, b: str) -> float:
+    sa = set((a or "").lower().split())
+    sb = set((b or "").lower().split())
+    if not sa and not sb: return 0.0
+    return len(sa & sb) / len(sa | sb)
+#
+#
+#
+#
+# Test for improving similarity accuracy ends here ---------------- 14/3/2026
 
 @app.route('/api/perform_comparison', methods=['POST'])
 def perform_comparison():
@@ -640,24 +739,17 @@ def perform_comparison():
         file.seek(0)
         file_bytes = file.read()
         if len(file_bytes) == 0:
-            print("❌ Error：Accepted File have 0 bytes！")
             return jsonify({'error': 'Empty file received'}), 400
 
         filename = file.filename.lower()
-        print(f"📥 收到上传文件: {filename}, 大小: {len(file_bytes)} bytes")
-        
         if filename.endswith('.pdf'):
-            # query_items = extract_all(io.BytesIO(file_bytes)) <-- OLD BUGGY LINE
-            
-            # NEW FIX: Exhaust the generator to get the final results
             results_from_pdf = []
+            # Exhaust generator to get results
             for update in extract_all(io.BytesIO(file_bytes)):
-                if update['status'] == 'extraction_complete':
-                    results_from_pdf = update['results']
-            
-            query_items = results_from_pdf # This is now the actual list of TMs
+                if update.get('status') == 'extraction_complete':
+                    results_from_pdf = update.get('results', [])
+            query_items = results_from_pdf 
         elif filename.endswith(('.png', '.jpg', '.jpeg', '.webp')):
-            # 自动切掉右侧文字只留 Logo
             clean_logo_bytes = extract_logo_from_bytes(file_bytes)
             query_items = [{
                 'serial_number': 'IMAGE_UPLOAD',
@@ -666,7 +758,6 @@ def perform_comparison():
                 'logo_data': clean_logo_bytes
             }]
         else:
-            print("❌ Error: Unsupported Format")
             return jsonify({'error': 'Unsupported file format'}), 400
     else:
         query_items = db.get_query_items_by_category(source_category)
@@ -681,89 +772,113 @@ def perform_comparison():
 
     for i, q in enumerate(query_items):
         txt = f"{q.get('trademark_name','') or ''} {q.get('description','') or ''}".strip()
-        all_texts.append(txt if txt else "n/a")
+        all_texts.append(txt if (txt and txt.lower() != 'n/a') else "empty")
         
-        # ⚠️ 修复点 3：移除 pass，把真实的报错打印出来！
         if q.get('logo_data'):
             try:
-                img = Image.open(io.BytesIO(q['logo_data'])).convert("RGB")
+                img = PILImage.open(io.BytesIO(q['logo_data'])).convert("RGB")
                 all_logo_images.append(img)
                 logo_mapping.append(i)
-            except Exception as e:
-                print(f"❌ Error processing image data (Index {i}): {e}")
+            except: pass
 
-    # Run Text Batch
-    print(f"--- Batch processing {len(all_texts)} texts ---")
+    # Run AI Text Batch
     text_embeddings = ml_model.text_model.encode(all_texts, batch_size=32, convert_to_numpy=True)
     faiss.normalize_L2(text_embeddings)
-    D_text, I_text = text_index.search(text_embeddings.astype('float32'), 20)
+    D_text, I_text = text_index.search(text_embeddings.astype('float32'), 25)
 
-    # Run Logo Batch
+    # Run AI Logo Batch
     logo_results = {}
     if all_logo_images:
-        print(f"--- Batch processing {len(all_logo_images)} logos ---")
         logo_embeddings = ml_model.image_model.encode(all_logo_images, batch_size=32, convert_to_numpy=True)
         faiss.normalize_L2(logo_embeddings)
-        D_logo, I_logo = image_index.search(logo_embeddings.astype('float32'), 20)
-        
+        D_logo, I_logo = image_index.search(logo_embeddings.astype('float32'), 50)
         for i, query_idx in enumerate(logo_mapping):
             logo_results[query_idx] = (D_logo[i], I_logo[i])
-    else:
-        print("⚠️ Warning: No logos successfully loaded into the AI model!")
 
-    # 4. SCORING & FINAL FORMATTING
+# ===============================================================================================
+# 4. ACCURATE SCORING REVAMP (FINAL VERSION)
+# ===============================================================================================
     final_results = []
     conn = db.get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
+    all_potential_ids = set()
     for i, q in enumerate(query_items):
-        candidate_ids = set()
         for idx in I_text[i]:
-            if idx != -1: candidate_ids.add(db_data['ids'][idx])
+            if idx != -1: all_potential_ids.add(db_data['ids'][idx])
         if i in logo_results:
             for idx in logo_results[i][1]:
-                if idx != -1: candidate_ids.add(db_data['ids'][idx])
+                if idx != -1: all_potential_ids.add(db_data['ids'][idx])
 
-        if not candidate_ids: continue
+    cur.execute("""
+        SELECT id, trademark_name, serial_number, applicant_name, description, 
+               class_indices, agent_details, logo_data
+        FROM trademarks WHERE id = ANY(%s)
+    """, (list(all_potential_ids),))
+    master_db_lookup = {row['id']: row for row in cur.fetchall()}
 
-        cur.execute("""
-            SELECT id, trademark_name, serial_number, applicant_name, description, class_indices, agent_details
-            FROM trademarks WHERE id = ANY(%s)
-        """, (list(candidate_ids),))
-        db_rows = {row['id']: row for row in cur.fetchall()}
-
+    for i, q in enumerate(query_items):
         match_list = []
-        q_name = (q.get('trademark_name') or "").strip().upper()
+        q_name_raw = (q.get('trademark_name') or "").strip()
+        q_name = q_name_raw.upper() if (len(q_name_raw) > 1 and q_name_raw.lower() != "n/a") else ""
         
-        has_text = bool(q_name or q.get('description', '').strip())
-        has_image = i in logo_results
+        # Check if query has a valid logo
+        q_logo = q.get('logo_data')
+        q_has_img = False
+        if q_logo:
+            nparr = np.frombuffer(q_logo, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
+            if img is not None and np.std(img) > 5: q_has_img = True
+
+        # AI Result Maps
+        t_sim_map = {db_data['ids'][idx]: float(D_text[i][rank]) for rank, idx in enumerate(I_text[i]) if idx != -1}
+        l_sim_map = {}
+        if i in logo_results:
+            l_sim_map = {db_data['ids'][idx]: float(logo_results[i][0][rank]) for rank, idx in enumerate(logo_results[i][1]) if idx != -1}
+
+        candidate_ids = set(t_sim_map.keys()) | set(l_sim_map.keys())
 
         for db_id in candidate_ids:
-            row = db_rows.get(db_id)
+            if q.get('id') == db_id: continue # Skip self
+            row = master_db_lookup.get(db_id)
             if not row: continue
 
-            t_sim = 0.0
-            t_row_ids = [db_data['ids'][x] for x in I_text[i]]
-            if db_id in t_row_ids: t_sim = float(D_text[i][t_row_ids.index(db_id)])
+            # --- TEXT SCORE ---
+            db_name = (row['trademark_name'] or "").strip().upper()
+            t_ai = t_sim_map.get(db_id, 0.0)
+            literal = 1.0 if (q_name and q_name == db_name) else (0.8 if (q_name and q_name in db_name) else 0.0)
+            fuzzy = seq_ratio(q_name, db_name) if (q_name and db_name) else 0.0
+            
+            text_sim_final = max(literal, t_ai, fuzzy)
 
-            l_sim = 0.0
-            if has_image:
-                l_row_ids = [db_data['ids'][x] for x in logo_results[i][1]]
-                if db_id in l_row_ids: l_sim = float(logo_results[i][0][l_row_ids.index(db_id)])
+            # --- IMAGE SCORE (The Accuracy Fix) ---
+            l_ai = l_sim_map.get(db_id, 0.0) if q_has_img else 0.0
+            
+            # Double check with PHash (Structural check)
+            pixel_sim = 0.0
+            if q_has_img and row['logo_data']:
+                pixel_sim = phash_score_bytes(q_logo, row['logo_data'])
+            
+            # Combine AI and Pixels:
+            # If AI is high but pixels are low, it's a false positive background match.
+            if pixel_sim < 0.25 and l_ai > 0.70:
+                img_sim_final = l_ai * 0.4 # Penalize background noise
+            else:
+                img_sim_final = max(l_ai, pixel_sim)
+            
+            # Boost 92%+ matches to 100%
+            if img_sim_final > 0.92: img_sim_final = 1.0
 
-            db_name = (row['trademark_name'] or "").upper()
-            literal = 1.0 if q_name and q_name == db_name else (0.7 if q_name and q_name in db_name else 0.0)
-
-            # 动态权重分配机制
-            if has_text and has_image:
-                total = (literal * 0.4) + (t_sim * 0.4) + (l_sim * 0.2)
-                threshold = 0.38
-            elif has_image and not has_text:
-                total = l_sim  
-                threshold = 0.50 
-            elif has_text and not has_image:
-                total = (literal * 0.5) + (t_sim * 0.5)
-                threshold = 0.38
+            # --- TOTAL ---
+            if q_name and q_has_img:
+                total = (text_sim_final * 0.45 + img_sim_final * 0.55)
+                threshold = 0.35
+            elif q_has_img:
+                total = img_sim_final
+                threshold = 0.45
+            elif q_name:
+                total = text_sim_final
+                threshold = 0.35
             else:
                 total, threshold = 0.0, 1.0
 
@@ -771,10 +886,10 @@ def perform_comparison():
                 match_list.append({
                     'id': db_id,
                     'serial': row['serial_number'],
-                    'label': row['applicant_name'],
+                    'label': row['trademark_name'] or row['applicant_name'],
                     'totalSim': round(total * 100, 2),
-                    'textSim': round(max(literal, t_sim) * 100, 2),
-                    'imgSim': round(l_sim * 100, 2),
+                    'textSim': round(text_sim_final * 100, 2),
+                    'imgSim': round(img_sim_final * 100, 2),
                     'description': row['description'],
                     'modalClass': row['class_indices'],
                     'modalAgent': row['agent_details']
@@ -783,60 +898,13 @@ def perform_comparison():
         match_list = sorted(match_list, key=lambda x: x['totalSim'], reverse=True)[:5]
         if match_list:
             final_results.append({
-                'query_serial': q.get('serial_number') or q.get('trademark_name') or 'IMAGE_UPLOAD',
+                'query_serial': q.get('serial_number') or q_name_raw or f"Item {i+1}",
                 'matches': match_list
             })
 
     cur.close()
     conn.close()
     return jsonify(final_results)
-
-# --- Replace your scoring loop with this ---  (Image Only)
-# for db_id in candidate_ids:
-#     row = db_rows.get(db_id)
-#     if not row: continue
-
-#     t_sim = 0.0
-#     t_row_ids = [db_data['ids'][x] for x in I_text[i]]
-#     if db_id in t_row_ids:
-#         t_sim = float(D_text[i][t_row_ids.index(db_id)])
-
-#     l_sim = 0.0
-#     if i in logo_results:
-#         l_row_ids = [db_data['ids'][x] for x in logo_results[i][1]]
-#         if db_id in l_row_ids:
-#             l_sim = float(logo_results[i][0][l_row_ids.index(db_id)])
-
-#     db_name = (row['trademark_name'] or "").upper()
-#     literal = 1.0 if q_name and q_name == db_name else (0.7 if q_name and q_name in db_name else 0.0)
-
-#     # NEW DYNAMIC SCORING LOGIC
-#     if q.get('logo_data') and not q_name:
-#         # If user ONLY uploaded an image (like your screenshot)
-#         total = l_sim 
-#         threshold = 0.35 # Lower threshold for pure visual search
-#     elif q_name and not q.get('logo_data'):
-#         # If user ONLY provided text
-#         total = max(literal, t_sim)
-#         threshold = 0.40
-#     else:
-#         # Combined search (Both text and image exist)
-#         total = (max(literal, t_sim) * 0.6) + (l_sim * 0.4)
-#         threshold = 0.38
-
-#     if total >= threshold:
-#         match_list.append({
-#             'id': db_id,
-#             'serial': row['serial_number'],
-#             'label': row['applicant_name'],
-#             'totalSim': round(total * 100, 2),
-#             'textSim': round(max(literal, t_sim) * 100, 2),
-#             'imgSim': round(l_sim * 100, 2),
-#             'description': row['description'],
-#             'modalClass': row['class_indices'],
-#             'modalAgent': row['agent_details']
-#         })
-
 # ===============================================================================================
 # DOWNLOAD REPORT AS PDF FORMAT
 # ===============================================================================================
