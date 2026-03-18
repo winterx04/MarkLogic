@@ -283,6 +283,46 @@ if (uploadBtn) {
     }
   });
 }
+
+// =============================
+// === UPLOAD CLIENT DATASET ===
+// =============================
+// Function to upload specifically for the Client tab
+async function uploadClientDataset(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    // Optional: Add metadata if your UI has inputs for these
+    formData.append('applicant_name', document.getElementById('clientName')?.value || 'New Client');
+
+    const response = await fetch('/upload-client', {
+        method: 'POST',
+        body: formData
+    });
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    
+    while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            const data = JSON.parse(line);
+            
+            // Update your existing Progress Bar IDs
+            if (data.status === "extracting" || data.status === "inserting") {
+                progressBar.style.width = `${data.percentage}%`;
+                progressText.innerText = data.status === "extracting" ? "AI Processing..." : "Saving Client Data...";
+            } else if (data.status === "complete") {
+                showPopup("✅ Client Upload Complete");
+            }
+        }
+    }
+}
+
 // =============================
 // === MANAGE TAB FUNCTIONALITY (DYNAMIC) ===
 // =============================

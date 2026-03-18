@@ -48,7 +48,7 @@ def init_db():
         );
     """)
 
-    # Create the users table (Preserving your exact logic)
+    # Create the users table
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY,
@@ -60,14 +60,26 @@ def init_db():
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
     """)
-    
+
+    # Client Trademarks Table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS client_trademarks (
+            id SERIAL PRIMARY KEY,
+            file_name TEXT,
+            logo_data BYTEA,
+            logo_embedding BYTEA,
+            applicant_name TEXT,
+            description TEXT,
+            upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
     conn.commit()
-    cur.close()
-    conn.close()
+    cur.close(); conn.close()
+    
     print("Database initialized successfully.")
 
 # ==============================================================================
-# USER MANAGEMENT FUNCTIONS (PRESERVED EXACTLY FROM YOUR CODE)
+# USER MANAGEMENT FUNCTIONS 
 # ==============================================================================
 
 def get_user_by_email(email):
@@ -163,6 +175,69 @@ def update_password_and_deactivate_temp_flag(user_id, new_password_hash):
 # TRADEMARK MANAGEMENT FUNCTIONS (EXPANDED FOR PERFECT EXTRACTOR)
 # ==============================================================================
 
+def insert_client_trademark(data):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    logo_emb = data['logo_embedding'].tobytes() if data.get('logo_embedding') is not None else None
+    try:
+        cur.execute("""
+            INSERT INTO client_trademarks 
+            (file_name, logo_data, logo_embedding, applicant_name, description, upload_date)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            data.get('file_name'),
+            psycopg2.Binary(data.get('logo_data')) if data.get('logo_data') else None,
+            logo_emb,
+            data.get('applicant_name'),
+            data.get('description'),
+            data.get('custom_date') # This maps to the date the user selected
+        ))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        cur.close(); conn.close()
+
+def get_client_query_items():
+    """Fetches items from the client table to be used as search queries."""
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    # Note: We use applicant_name as trademark_name for consistency in the search loop
+    cur.execute("""
+        SELECT id, applicant_name as trademark_name, description, logo_data 
+        FROM client_trademarks
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def get_client_logo(client_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT logo_data FROM client_trademarks WHERE id = %s", (client_id,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    return row[0] if row else None
+
+def get_all_client_embeddings():
+    """Fetches embeddings specifically from the client table for FAISS."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, logo_embedding FROM client_trademarks WHERE logo_embedding IS NOT NULL")
+    rows = cur.fetchall()
+    cur.close(); conn.close()
+
+    db_data = {'logo': [], 'ids': [], 'text': []} # Text is empty for client usually
+    for row in rows:
+        db_id, logo_bytes = row
+        db_data['ids'].append(db_id)
+        db_data['logo'].append(np.frombuffer(logo_bytes, dtype=np.float32))
+        # Provide dummy text embedding to keep FAISS index logic consistent
+        db_data['text'].append(np.zeros(384, dtype=np.float32)) 
+    return db_data
+
 def insert_trademark(data):
     conn = get_db_connection()
     cur = conn.cursor()
@@ -217,18 +292,6 @@ def insert_trademark(data):
     finally:
         cur.close(); conn.close()
 
-# def get_all_trademarks():
-#     """Fetches all trademarks for display in dataset.html."""
-#     conn = get_db_connection()
-#     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-#     cur.execute("""
-#         SELECT id, serial_number, trademark_name, class_indices, applicant_name, category, is_split,
-#                (logo_data IS NOT NULL) as has_logo
-#         FROM trademarks ORDER BY id DESC
-#     """)
-#     trademarks = cur.fetchall()
-#     cur.close(); conn.close()
-#     return trademarks
 def get_all_trademarks():
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -296,7 +359,7 @@ def delete_trademark_by_id(trademark_id):
         cur.close()
         conn.close()
 # ==============================================================================
-# SEARCH FUNCTIONS (PRESERVED & ENHANCED)
+# SEARCH FUNCTIONS 
 # ==============================================================================
 
 def search_trademarks(words=None, class_filter=None, id_list=None):

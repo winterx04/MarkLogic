@@ -1,322 +1,268 @@
-// =============================
-// === TAB SWITCHING LOGIC ===
-// =============================
-const tabBtns = document.querySelectorAll(".dataset-tab-btn");
-const tabPanels = document.querySelectorAll(".dataset-tab-panel");
+/**
+ * client-dataset.js
+ * Complete logic for Tab Switching, AI Upload Streaming, and Manage Table Search
+ */
 
-tabBtns.forEach((btn) => {
-  btn.addEventListener("click", () => {
-    const tabName = btn.dataset.tab;
-    tabBtns.forEach((b) => b.classList.remove("active"));
-    tabPanels.forEach((p) => p.classList.remove("active"));
-    btn.classList.add("active");
-    document.getElementById(`${tabName}-panel`).classList.add("active");
-  });
-});
+document.addEventListener('DOMContentLoaded', () => {
+    console.log("🚀 Client Dataset Logic Initialized");
 
-// =============================
-// === FILE UPLOAD HANDLING ===
-// =============================
-const uploadArea = document.getElementById("uploadArea");
-const fileInput = document.getElementById("fileInput");
-const uploadBtn = document.getElementById("uploadBtn");
-let selectedFiles = [];
+    // ==========================================
+    // 1. SELECTORS
+    // ==========================================
+    const tabBtns = document.querySelectorAll(".dataset-tab-btn");
+    const tabPanels = document.querySelectorAll(".dataset-tab-panel");
+    
+    const uploadArea = document.getElementById("uploadArea");
+    const fileInput = document.getElementById("fileInput");
+    const uploadBtn = document.getElementById("uploadBtn");
+    
+    const progressContainer = document.getElementById("progressContainer");
+    const progressBar = document.getElementById("progressBar");
+    const progressPercent = document.getElementById("progressPercent");
+    const progressText = document.getElementById("progressText");
 
-// Create dynamic file list container
-const fileListContainer = document.createElement("div");
-fileListContainer.classList.add("dataset-file-list");
-uploadArea.insertAdjacentElement("afterend", fileListContainer);
+    const tbody = document.getElementById("clientTableBody");
+    const searchBtn = document.getElementById("btnSearchClient");
+    const searchInput = document.getElementById("searchClientName");
+    const resetBtn = document.getElementById("resetClientSearch");
 
-uploadArea.addEventListener("click", () => fileInput.click());
-fileInput.addEventListener("change", (e) => addFiles(Array.from(e.target.files)));
+    let selectedFiles = [];
 
-uploadArea.addEventListener("dragover", (e) => {
-  e.preventDefault();
-  uploadArea.classList.add("dragover");
-});
-uploadArea.addEventListener("dragleave", () => uploadArea.classList.remove("dragover"));
-uploadArea.addEventListener("drop", (e) => {
-  e.preventDefault();
-  uploadArea.classList.remove("dragover");
-  addFiles(Array.from(e.dataTransfer.files));
-});
 
-function addFiles(newFiles) {
-  if (selectedFiles.length >= 1) {
-    showPopup("You can only upload one file at a time.", true);
-    return;
-  }
-  if (newFiles.length > 1) {
-    showPopup("Please select only one file.", true);
-    return;
-  }
 
-  const file = newFiles[0];
-  selectedFiles = [file];
-  renderFileList();
-  updateUploadButton();
-}
 
-function renderFileList() {
-  fileListContainer.innerHTML = "";
-  if (selectedFiles.length === 0) {
-    fileListContainer.style.display = "none";
-    return;
-  }
-  fileListContainer.style.display = "block";
+    // ==========================================
+    // 2. TAB SWITCHING (Hardened for Visual Fix)
+    // ==========================================
 
-  const file = selectedFiles[0];
-  const item = document.createElement("div");
-  item.classList.add("dataset-file-item");
-
-  const icon = document.createElement("div");
-  icon.classList.add("dataset-file-icon");
-  icon.innerHTML = getFileIcon(file.type);
-
-  const info = document.createElement("div");
-  info.classList.add("dataset-file-info");
-  info.innerHTML = `
-    <div class="dataset-file-name">${file.name}</div>
-    <div class="dataset-file-meta">${formatFileSize(file.size)}</div>
-  `;
-
-  const removeBtn = document.createElement("button");
-  removeBtn.classList.add("dataset-remove-icon");
-  removeBtn.innerHTML = `<img src="file-icons/close.png" alt="Remove" style="width:16px; height:16px; object-fit:contain;">`;
-  removeBtn.addEventListener("click", removeFile);
-
-  item.append(icon, info, removeBtn);
-  fileListContainer.appendChild(item);
-}
-
-function removeFile() {
-  selectedFiles = [];
-  renderFileList();
-  updateUploadButton();
-}
-
-function getFileIcon(type) {
-  let iconPath = "file-icons/folder.png";
-  if (type.startsWith("image/")) iconPath = "file-icons/image.png";
-  else if (type.includes("pdf")) iconPath = "file-icons/pdf.png";
-  else if (type.includes("word")) iconPath = "file-icons/word.png";
-  else if (type.includes("excel") || type.includes("spreadsheet")) iconPath = "file-icons/excel.png";
-  else if (type.includes("presentation") || type.includes("powerpoint")) iconPath = "file-icons/ppt.png";
-  return `<img src="${iconPath}" alt="file icon" class="dataset-file-icon-img">`;
-}
-
-function formatFileSize(bytes) {
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(1)} KB`;
-  return `${(kb / 1024).toFixed(1)} MB`;
-}
-
-function updateUploadButton() {
-  if (selectedFiles.length > 0) {
-    uploadBtn.disabled = false;
-    uploadBtn.textContent = "Upload 1 File";
-  } else {
-    uploadBtn.disabled = true;
-    uploadBtn.textContent = "Upload File";
-  }
-}
-
-// =============================
-// === POPUP NOTIFICATION ===
-// =============================
-function showPopup(message, isError = false) {
-  let popup = document.querySelector(".upload-popup");
-  if (!popup) {
-    popup = document.createElement("div");
-    popup.className = "upload-popup";
-    document.body.appendChild(popup);
-  }
-  popup.textContent = message;
-  popup.classList.add("show");
-  popup.classList.toggle("error", isError);
-  setTimeout(() => popup.classList.remove("show"), 3000);
-}
-
-// =============================
-// === UPLOAD TAB ACTION ===
-// =============================
-uploadBtn.addEventListener("click", () => {
-  const fileNameInput = document.getElementById("fileName");
-  const fileDateInput = document.getElementById("fileDate");
-  const fileName = fileNameInput.value.trim();
-  const fileDate = fileDateInput.value;
-
-  // Validate date is filled
-  if (!fileDate) {
-    showPopup("Please select a date before uploading.", true);
-    return;
-  }
-
-  if (selectedFiles.length === 0) {
-    showPopup("Please select a file before uploading.", true);
-    return;
-  }
-
-  const originalFile = selectedFiles[0];
-  const originalName = originalFile.name;
-  const extension = originalName.substring(originalName.lastIndexOf("."));
-  const baseOriginalName = originalName.substring(0, originalName.lastIndexOf("."));
-
-  // If no new name entered → use the same file name directly
-  if (!fileName) {
-    showPopup(`✅ File "${originalName}" uploaded successfully with date ${fileDate}!`);
-    resetUploadUI();
-    return;
-  }
-
-  // If new name entered → confirm rename
-  if (fileName !== baseOriginalName) {
-    showConfirmPopup(
-      `Are you sure you want to rename "${baseOriginalName}${extension}" to "${fileName}${extension}" before uploading?`,
-      () => {
-        showPopup(`✅ File name changed to "${fileName}${extension}" and uploaded successfully with date ${fileDate}!`);
-        resetUploadUI();
+    function showPlaceholderMessage() {
+      const tbody = document.getElementById("fileTableBody");
+      if (tbody) {
+          tbody.innerHTML = `
+              <tr>
+                  <td colspan="4" style="text-align:center; padding:40px; color:rgba(255,255,255,0.5);">
+                      <div style="font-size: 2rem; margin-bottom: 10px;">🔍</div>
+                      Enter an Applicant Name or Description above to search the dataset.
+                  </td>
+              </tr>
+          `;
       }
-    );
-  } else {
-    showPopup(`✅ File "${originalName}" uploaded successfully with date ${fileDate}!`);
-    resetUploadUI();
-  }
-});
-
-// Helper function to clear UI after upload
-function resetUploadUI() {
-  selectedFiles = [];
-  renderFileList();
-  updateUploadButton();
-  document.getElementById("fileName").value = "";
-  document.getElementById("fileDate").value = "";
-}
-
-// =============================
-// === MANAGE TAB FUNCTIONALITY ===
-// =============================
-
-// Select All Checkbox
-const selectAllCheckbox = document.getElementById("selectAll");
-if (selectAllCheckbox) {
-  selectAllCheckbox.addEventListener("change", (e) => {
-    const checkboxes = document.querySelectorAll(".manage-checkbox:not(#selectAll)");
-    checkboxes.forEach((box) => (box.checked = e.target.checked));
-  });
-}
-
-// Keep Select All in sync
-document.addEventListener("change", (e) => {
-  if (e.target.classList.contains("manage-checkbox") && e.target.id !== "selectAll") {
-    const allBoxes = document.querySelectorAll(".manage-checkbox:not(#selectAll)");
-    const checkedBoxes = document.querySelectorAll(".manage-checkbox:not(#selectAll):checked");
-    if (selectAllCheckbox) selectAllCheckbox.checked = allBoxes.length === checkedBoxes.length;
-  }
-});
-
-// Custom Confirmation Popup
-function showConfirmPopup(message, onConfirm) {
-  let overlay = document.querySelector(".confirm-overlay");
-  if (!overlay) {
-    overlay = document.createElement("div");
-    overlay.className = "confirm-overlay";
-    overlay.innerHTML = `
-      <div class="confirm-box">
-        <p class="confirm-message"></p>
-        <div class="confirm-buttons">
-          <button class="confirm-yes">Yes</button>
-          <button class="confirm-no">No</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-  }
-
-  overlay.querySelector(".confirm-message").textContent = message;
-  overlay.classList.add("show");
-
-  overlay.querySelector(".confirm-yes").onclick = () => {
-    overlay.classList.remove("show");
-    onConfirm();
-  };
-  overlay.querySelector(".confirm-no").onclick = () => overlay.classList.remove("show");
-}
-
-// Delete Button
-const deleteBtn = document.querySelector(".manage-delete-btn");
-if (deleteBtn) {
-  deleteBtn.addEventListener("click", () => {
-    const checked = document.querySelectorAll(".manage-checkbox:not(#selectAll):checked");
-    if (checked.length === 0) {
-      showPopup("Please select at least one file to delete.", true);
-      return;
     }
 
-    showConfirmPopup(`Are you sure you want to delete ${checked.length} file(s)?`, () => {
-      checked.forEach((c) => c.closest("tr").remove());
-      showPopup(`✅ ${checked.length} file(s) deleted successfully!`);
-      if (selectAllCheckbox) selectAllCheckbox.checked = false;
+    tabBtns.forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+            e.preventDefault();
+            const tabName = btn.dataset.tab;
+            console.log(`Attempting to switch to: ${tabName}`);
+
+            // Update Button Visuals
+            tabBtns.forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+
+            // Update Panel Visuals (Force Display)
+            tabPanels.forEach(p => {
+                const isTarget = p.id === `${tabName}-panel`;
+                p.classList.toggle("active", isTarget);
+                p.style.display = isTarget ? "block" : "none"; // Explicit override
+            });
+
+            if (tabName === 'manage') {
+                //showPlaceholderMessage();   // Show placeholder until results load OR Change this to loadClientTable("") to show all records immediately
+                loadClientTable("");        // Load all records when Manage tab is clicked
+                setTimeout(attachSearchListener, 100);
+            }
+        });
     });
-  });
-}
 
-// Search Button
-const searchBtn = document.querySelector(".manage-search-btn");
-if (searchBtn) {
-  searchBtn.addEventListener("click", () => {
-    const searchTerm = document.getElementById("searchFileName").value.trim();
-    const searchDate = document.getElementById("searchDate").value;
-    const rows = document.querySelectorAll("#fileTableBody tr");
-
-    // If both fields are empty
-    if (!searchTerm && !searchDate) {
-      showPopup("Please enter a file name or select a date to search.", true);
-      return;
+    // ==========================================
+    // 3. FILE UPLOAD & PREVIEW
+    // ==========================================
+    if (uploadArea) {
+        uploadArea.addEventListener("click", () => fileInput.click());
+        uploadArea.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            uploadArea.classList.add("dragover");
+        });
+        uploadArea.addEventListener("dragleave", () => uploadArea.classList.remove("dragover"));
+        uploadArea.addEventListener("drop", (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove("dragover");
+            if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
+        });
     }
 
-    let foundCount = 0;
+    if (fileInput) {
+        fileInput.addEventListener("change", (e) => handleFiles(e.target.files));
+    }
 
-    rows.forEach(row => {
-      const fileName = row.cells[1].textContent.toLowerCase();
-      const fileDate = row.cells[2].textContent;
-      
-      const matchesName = !searchTerm || fileName.includes(searchTerm.toLowerCase());
-      const matchesDate = !searchDate || fileDate === searchDate;
+    function handleFiles(files) {
+        selectedFiles = [files[0]];
+        console.log("File Selected:", selectedFiles[0].name);
+        const dropText = document.getElementById("dropText");
+        if (dropText) dropText.innerHTML = `Selected: <strong>${selectedFiles[0].name}</strong>`;
+        uploadBtn.disabled = false;
+    }
 
-      if (matchesName && matchesDate) {
-        row.style.display = "";
-        foundCount++;
-      } else {
-        row.style.display = "none";
-      }
+    // ==========================================
+    // 4. UPLOAD ACTION (STREAMING)
+    // ==========================================
+    uploadBtn.addEventListener("click", async () => {
+        const fileName = document.getElementById("fileName").value.trim();
+        const fileDate = document.getElementById("fileDate").value;
+
+        if (!selectedFiles.length || !fileDate) {
+            return showPopup("Please select a file and a date.", true);
+        }
+
+        const formData = new FormData();
+        formData.append('file', selectedFiles[0]);
+        formData.append('user_file_name', fileName || selectedFiles[0].name);
+        formData.append('user_date', fileDate);
+
+        progressContainer.style.display = "block";
+        uploadBtn.disabled = true;
+        uploadBtn.innerText = "⏳ Initializing AI...";
+
+        try {
+            const response = await fetch('/upload-client-dataset', {
+                method: 'POST',
+                body: formData
+            });
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let leftover = "";
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value, { stream: true });
+                const lines = (leftover + chunk).split('\n');
+                leftover = lines.pop();
+
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    const data = JSON.parse(line);
+
+                    if (data.status === "extracting" || data.status === "inserting") {
+                        const pct = data.percentage || 0;
+                        progressBar.style.width = `${pct}%`;
+                        progressPercent.innerText = `${pct}%`;
+                        progressText.innerText = data.status === "extracting" 
+                            ? `AI Scanning Page ${data.current_page || ''}...` 
+                            : `Saving Record...`;
+                    } 
+                    else if (data.status === "complete") {
+                        showPopup("✅ " + data.message);
+                        setTimeout(() => location.reload(), 2000);
+                    }
+                    else if (data.status === "error") {
+                        showPopup("❌ " + data.message, true);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error(err);
+            showPopup("❌ Upload failed.", true);
+        } finally {
+            uploadBtn.disabled = false;
+        }
     });
 
-    if (foundCount === 0) {
-      showPopup("No files found matching your search criteria.", true);
+    // ==========================================
+    // 5. MANAGE TAB SEARCH & TABLE
+    // ==========================================
+    async function loadClientTable(query = "") {
+        if (!tbody) {
+            console.error("❌ Table Body 'clientTableBody' NOT FOUND in HTML!");
+            return;
+        }
+
+        console.log(`📡 Fetching Client Data for: "${query}"`);
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">Searching...</td></tr>';
+
+        try {
+            const res = await fetch(`/api/client-trademarks?q=${encodeURIComponent(query)}`);
+            const data = await res.json();
+            console.log("📦 Results received:", data.length);
+
+            tbody.innerHTML = "";
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">No records found.</td></tr>';
+                return;
+            }
+
+            data.forEach(item => {
+                const row = document.createElement("tr");
+                row.innerHTML = `
+                    <td class="table-checkbox-col">
+                        <input type="checkbox" class="manage-checkbox" data-id="${item.id}">
+                    </td>
+                    <td>${item.applicant_name || 'N/A'}</td>
+                    <td>${item.description || 'N/A'}</td>
+                    <td>${item.upload_date || 'N/A'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        } catch (e) {
+            console.error("Fetch Error:", e);
+            tbody.innerHTML = '<tr><td colspan="4" style="color:red; text-align:center;">Error loading results.</td></tr>';
+        }
+    }
+
+    function attachSearchListener() {
+        const btn = document.getElementById("btnSearchClient");
+        if (btn) {
+            // Remove old listener
+            const newBtn = btn.cloneNode(true);
+            btn.parentNode.replaceChild(newBtn, btn);
+            
+            newBtn.addEventListener("click", () => {
+                console.log("🔍 Search Clicked");
+                const term = document.getElementById("searchClientName").value.trim();
+                loadClientTable(term);
+            });
+            console.log("✅ Search Listener Attached");
+        }
+    }
+
+    // RESET SEARCH FUNCTIONALITY
+    if (resetBtn) {
+        resetBtn.addEventListener("click", () => {
+            console.log("🔄 Resetting search filters...");
+            
+            // 1. Clear the text input
+            if (searchInput) searchInput.value = "";
+            
+            // 2. Reload the full table with all data (empty query) 
+            loadClientTable(""); 
+
+            //showPlaceholderMessage(); // Show placeholder until results load (Basically no results when reset)
+            
+            // 3. Show feedback
+            showPopup("Search cleared.");
+        });
+        console.log("✅ Reset Listener Attached to resetClientSearch");
     } else {
-      const criteria = [];
-      if (searchTerm) criteria.push(`name "${searchTerm}"`);
-      if (searchDate) criteria.push(`date "${searchDate}"`);
-      showPopup(`🔍 Found ${foundCount} file(s) matching ${criteria.join(" and ")}`);
+        console.warn("⚠️ Reset button 'resetClientSearch' not found in HTML.");
     }
-  });
-}
+    // ==========================================
+    // 6. HELPERS
+    // ==========================================
+    function showPopup(message, isError = false) {
+        let popup = document.querySelector(".upload-popup");
+        if (!popup) {
+            popup = document.createElement("div");
+            popup.className = "upload-popup";
+            document.body.appendChild(popup);
+        }
+        popup.textContent = message;
+        popup.classList.add("show");
+        popup.classList.toggle("error", isError);
+        setTimeout(() => popup.classList.remove("show"), 3000);
+    }
 
-// Reset Search Button
-const resetSearchBtn = document.getElementById("resetSearchBtn");
-if (resetSearchBtn) {
-  resetSearchBtn.addEventListener("click", () => {
-    // Clear search inputs
-    document.getElementById("searchFileName").value = "";
-    document.getElementById("searchDate").value = "";
-    
-    // Show all rows
-    const rows = document.querySelectorAll("#fileTableBody tr");
-    rows.forEach(row => {
-      row.style.display = "";
-    });
-    
-    showPopup("🔄 Search filters cleared. Showing all files.");
-  });
-}
+    // Initial load
+    attachSearchListener();
+});
