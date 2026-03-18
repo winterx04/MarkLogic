@@ -119,7 +119,6 @@ function renderUploadPreviews() {
     const count = document.getElementById('uploadFileCount');
     const item = document.getElementById('uploadItem');
 
-    // SAFETY CHECK: If the elements don't exist, stop the function
     if (!grid || !count || !item) {
         console.warn("Upload preview elements not found in DOM.");
         return;
@@ -188,7 +187,7 @@ async function runCompare() {
     if (selectedSource === 'upload') {
         formData.append("file", uploadedFiles[0]);
         formData.append("source_category", "UPLOAD");
-    } else {
+    } else if (selectedSource === 'clientLeft') {
         formData.append("source_category", "CLIENT");
     }
     
@@ -223,6 +222,17 @@ async function runCompare() {
 }
 
 /**
+ * HELPER: Determines which URL to use based on the target selected
+ */
+function getLogoUrl(id) {
+    if (selectedCompare === 'clientRight') {
+        return `/client-logo/${id}`;
+    }
+    return `/logo/${id}`;
+}
+
+
+/**
  * RENDERING RESULTS
  */
 function renderResults(data) {
@@ -230,7 +240,6 @@ function renderResults(data) {
     const cmpLabel = selectedCompare === 'myipo' ? 'MYIPO Journals' : 'Client Dataset';
     document.getElementById('comparisonInfo').textContent = `Comparing ${srcLabel} with ${cmpLabel}`;
 
-    // Determine if we are in grouped (PDF) or flat (Single Image) mode
     const isGrouped = Array.isArray(data) && data.length > 0 && data[0].matches;
 
     if (isGrouped) {
@@ -252,10 +261,11 @@ function renderImageMode(results) {
         const card = document.createElement('div');
         card.className = 'result-card';
         card.style.animationDelay = `${i * 0.05}s`;
+        const imgSrc = getLogoUrl(res.id);
         card.innerHTML = `
             <div class="card-top">
                 <div class="card-icon-img">
-                    <img src="/logo/${res.id}" onerror="this.src='/static/images/placeholder.png'">
+                    <img src="${imgSrc}" onerror="this.src='/static/images/placeholder.png'">
                 </div>
                 <div class="card-similarities">
                     <div class="similarity-item">
@@ -276,7 +286,7 @@ function renderImageMode(results) {
 
 function renderPDFMode(groups) {
     const sourceBlocks = document.getElementById('sourceBlocks');
-    if (!sourceBlocks) return; // Safety check
+    if (!sourceBlocks) return;
     
     document.getElementById('resultsGrid').innerHTML = '';
     sourceBlocks.innerHTML = '';
@@ -301,9 +311,10 @@ function renderPDFMode(groups) {
         group.matches.forEach(m => {
             const row = document.createElement('div');
             row.className = 'match-row';
-            row.onclick = () => openModal(m, group.matches); // Cleaner than inline strings
+            row.onclick = () => openModal(m, group.matches);
+            const imgSrc = getLogoUrl(m.id);
             row.innerHTML = `
-                <div class="match-thumb"><img src="/logo/${m.id}"></div>
+                <div class="match-thumb"><img src="${imgSrc}"></div>
                 <div class="match-info">
                     <div class="match-name">${m.label}</div>
                     <div class="match-meta">Score: ${m.totalSim}%</div>
@@ -323,8 +334,9 @@ function renderPDFMode(groups) {
  * MODAL & PDF REPORT
  */
 function openModal(data, allMatches = []) {
+    const mainImgSrc = getLogoUrl(data.id);
     const wrap = document.getElementById('modalImageWrap');
-    wrap.innerHTML = `<img src="/logo/${data.id}" style="width:100%;height:100%;object-fit:contain;">`;
+    wrap.innerHTML = `<img src="${mainImgSrc}" style="width:100%;height:100%;object-fit:contain;">`;
 
     document.getElementById("modalCompanyName").textContent = data.label || "N/A";
     document.getElementById("modalImageSim").textContent = `${data.imgSim}%`;
@@ -338,18 +350,20 @@ function openModal(data, allMatches = []) {
     matchesList.innerHTML = "";
 
     const others = allMatches.filter(m => m.id !== data.id).slice(0, 3);
-    modalTopMatches = others;   // store for PDF generation
+    modalTopMatches = others;
     others.forEach(m => {
         const item = document.createElement('div');
         item.className = 'modal-match-row';
         item.style = "display: flex; align-items: center; gap: 15px; padding: 12px; border-bottom: 1px solid #eee; cursor: pointer;";
+        const subImgSrc = getLogoUrl(m.id);
         item.innerHTML = `
-            <img src="/logo/${m.id}" style="width: 45px; height: 45px; object-fit: contain;">
+            <img src="${subImgSrc}" style="width: 45px; height: 45px; object-fit: contain;">
             <div style="flex: 1;">
                 <div style="font-weight: 600;">${m.label}</div>
                 <div style="font-size: 0.8rem;">${m.serial || ''}</div>
             </div>
             <div style="font-weight: bold; color: #4f46e5;">${m.totalSim}%</div>`;
+        
         item.onclick = () => openModal(m, allMatches);
         matchesList.appendChild(item);
     });
@@ -367,6 +381,7 @@ document.getElementById("modalDownload").onclick = async function() {
 
     const reportData = {
         id: trademarkId,
+        isClientCompare: selectedCompare === 'clientRight',
         label: document.getElementById("modalCompanyName").textContent,
         imgSim: document.getElementById("modalImageSim").textContent.replace('%', ''),
         textSim: document.getElementById("modalTextSim").textContent.replace('%', ''),
@@ -375,7 +390,6 @@ document.getElementById("modalDownload").onclick = async function() {
         modalAgent: document.getElementById("modalAgent").textContent,
         description: document.getElementById("modalDescription").textContent,
         topMatches: modalTopMatches
-
     };
 
     showPopup("📄 Generating PDF report...");
