@@ -1,583 +1,504 @@
 // =============================
+// === DESC CELL STYLES ===
+// =============================
+(function injectDescStyles() {
+    if (document.getElementById("dataset-desc-styles")) return;
+    const style = document.createElement("style");
+    style.id = "dataset-desc-styles";
+    style.textContent = `
+        .desc-preview,
+        .desc-full {
+            display: inline;
+            font-size: 0.85rem;
+            line-height: 1.55;
+            color: inherit;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .desc-toggle-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 5px;
+            padding: 2px 10px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            color: #a0c4ff;
+            background: rgba(100, 88, 240, 0.18);
+            border: 1px solid rgba(100, 88, 240, 0.35);
+            border-radius: 20px;
+            cursor: pointer;
+            transition: background 0.18s, color 0.18s;
+            white-space: nowrap;
+        }
+        .desc-toggle-btn:hover {
+            background: rgba(100, 88, 240, 0.38);
+            color: #fff;
+        }
+        .tm-logo-thumb {
+            width: 56px;
+            height: 56px;
+            object-fit: contain;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            display: block;
+        }
+        .tm-no-logo {
+            width: 56px;
+            height: 56px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+    `;
+    document.head.appendChild(style);
+})();
+
+// =============================
 // === TAB SWITCHING LOGIC ===
 // =============================
-const tabBtns = document.querySelectorAll(".dataset-tab-btn");
+const tabBtns   = document.querySelectorAll(".dataset-tab-btn");
 const tabPanels = document.querySelectorAll(".dataset-tab-panel");
 
 tabBtns.forEach((btn) => {
-  btn.addEventListener("click", () => {
-    const tabName = btn.dataset.tab;
-    tabBtns.forEach((b) => b.classList.remove("active"));
-    tabPanels.forEach((p) => p.classList.remove("active"));
-    btn.classList.add("active");
-    const panel = document.getElementById(`${tabName}-panel`);
-    if (panel) panel.classList.add("active");
-  });
+    btn.addEventListener("click", () => {
+        const tabName = btn.dataset.tab;
+        tabBtns.forEach((b) => b.classList.remove("active"));
+        tabPanels.forEach((p) => p.classList.remove("active"));
+        btn.classList.add("active");
+        const panel = document.getElementById(`${tabName}-panel`);
+        if (panel) panel.classList.add("active");
+
+        if (tabName === "manage") {
+            loadTrademarks();
+        }
+    });
 });
 
-// Activate first tab by default (if none active)
 if (!document.querySelector(".dataset-tab-btn.active") && tabBtns.length) {
-  tabBtns[0].click();
+    tabBtns[0].click();
 }
 
 // =============================
 // === FILE UPLOAD HANDLING ===
 // =============================
 const uploadArea = document.getElementById("uploadArea");
-const fileInput = document.getElementById("fileInput");
-const uploadBtn = document.getElementById("uploadBtn");
+const fileInput  = document.getElementById("fileInput");
+const uploadBtn  = document.getElementById("uploadBtn");
 let selectedFiles = [];
 
-// Create dynamic file list container
 const fileListContainer = document.createElement("div");
 fileListContainer.classList.add("dataset-file-list");
 if (uploadArea) uploadArea.insertAdjacentElement("afterend", fileListContainer);
 
-if (uploadArea) {
-  uploadArea.addEventListener("click", () => fileInput.click());
-}
-
-if (fileInput) {
-  fileInput.addEventListener("change", (e) => addFiles(Array.from(e.target.files)));
-}
+if (uploadArea) uploadArea.addEventListener("click", () => fileInput.click());
+if (fileInput)  fileInput.addEventListener("change", (e) => addFiles(Array.from(e.target.files)));
 
 if (uploadArea) {
-  uploadArea.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    uploadArea.classList.add("dragover");
-  });
-  uploadArea.addEventListener("dragleave", () => uploadArea.classList.remove("dragover"));
-  uploadArea.addEventListener("drop", (e) => {
-    e.preventDefault();
-    uploadArea.classList.remove("dragover");
-    addFiles(Array.from(e.dataTransfer.files));
-  });
+    uploadArea.addEventListener("dragover", (e) => { e.preventDefault(); uploadArea.classList.add("dragover"); });
+    uploadArea.addEventListener("dragleave", () => uploadArea.classList.remove("dragover"));
+    uploadArea.addEventListener("drop", (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove("dragover");
+        addFiles(Array.from(e.dataTransfer.files));
+    });
 }
 
 function addFiles(newFiles) {
-  if (selectedFiles.length >= 1) {
-    showPopup("You can only upload one file at a time.", true);
-    return;
-  }
-  if (newFiles.length > 1) {
-    showPopup("Please select only one file.", true);
-    return;
-  }
-
-  const file = newFiles[0];
-  selectedFiles = [file];
-  renderFileList();
-  updateUploadButton();
+    if (selectedFiles.length >= 1) { showPopup("You can only upload one file at a time.", true); return; }
+    if (newFiles.length > 1)       { showPopup("Please select only one file.", true); return; }
+    selectedFiles = [newFiles[0]];
+    renderFileList();
+    updateUploadButton();
 }
 
 function renderFileList() {
-  fileListContainer.innerHTML = "";
-  if (selectedFiles.length === 0) {
-    fileListContainer.style.display = "none";
-    return;
-  }
-  fileListContainer.style.display = "block";
+    fileListContainer.innerHTML = "";
+    if (selectedFiles.length === 0) { fileListContainer.style.display = "none"; return; }
+    fileListContainer.style.display = "block";
 
-  const file = selectedFiles[0];
-  const item = document.createElement("div");
-  item.classList.add("dataset-file-item");
+    const file      = selectedFiles[0];
+    const item      = document.createElement("div");
+    item.classList.add("dataset-file-item");
 
-  const icon = document.createElement("div");
-  icon.classList.add("dataset-file-icon");
-  icon.innerHTML = getFileIcon(file.type);
+    const icon = document.createElement("div");
+    icon.classList.add("dataset-file-icon");
+    icon.innerHTML = getFileIcon(file.type);
 
-  const info = document.createElement("div");
-  info.classList.add("dataset-file-info");
-  info.innerHTML = `
-    <div class="dataset-file-name">${file.name}</div>
-    <div class="dataset-file-meta">${formatFileSize(file.size)}</div>
-  `;
+    const info = document.createElement("div");
+    info.classList.add("dataset-file-info");
+    info.innerHTML = `<div class="dataset-file-name">${file.name}</div><div class="dataset-file-meta">${formatFileSize(file.size)}</div>`;
 
-  const removeBtn = document.createElement("button");
-  removeBtn.classList.add("dataset-remove-icon");
-  removeBtn.innerHTML = `<img src="file-icons/close.png" alt="Remove" style="width:16px; height:16px; object-fit:contain;">`;
-  removeBtn.addEventListener("click", removeFile);
+    const removeBtn = document.createElement("button");
+    removeBtn.classList.add("dataset-remove-icon");
+    removeBtn.innerHTML = `<img src="file-icons/close.png" alt="Remove" style="width:16px;height:16px;object-fit:contain;">`;
+    removeBtn.addEventListener("click", removeFile);
 
-  item.append(icon, info, removeBtn);
-  fileListContainer.appendChild(item);
+    item.append(icon, info, removeBtn);
+    fileListContainer.appendChild(item);
 }
 
-function removeFile() {
-  selectedFiles = [];
-  renderFileList();
-  updateUploadButton();
-}
+function removeFile() { selectedFiles = []; renderFileList(); updateUploadButton(); }
 
 function getFileIcon(type) {
-  let iconPath = "file-icons/folder.png";
-  if (type && type.startsWith && type.startsWith("image/")) iconPath = "file-icons/image.png";
-  else if (type && type.includes && type.includes("pdf")) iconPath = "file-icons/pdf.png";
-  else if (type && type.includes && type.includes("word")) iconPath = "file-icons/word.png";
-  else if (type && type.includes && (type.includes("excel") || type.includes("spreadsheet"))) iconPath = "file-icons/excel.png";
-  else if (type && type.includes && (type.includes("presentation") || type.includes("powerpoint"))) iconPath = "file-icons/ppt.png";
-  return `<img src="${iconPath}" alt="file icon" class="dataset-file-icon-img">`;
+    let p = "file-icons/folder.png";
+    if (type?.startsWith("image/"))                                        p = "file-icons/image.png";
+    else if (type?.includes("pdf"))                                        p = "file-icons/pdf.png";
+    else if (type?.includes("word"))                                       p = "file-icons/word.png";
+    else if (type?.includes("excel") || type?.includes("spreadsheet"))    p = "file-icons/excel.png";
+    else if (type?.includes("presentation") || type?.includes("powerpoint")) p = "file-icons/ppt.png";
+    return `<img src="${p}" alt="file icon" class="dataset-file-icon-img">`;
 }
 
 function formatFileSize(bytes) {
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(1)} KB`;
-  return `${(kb / 1024 / 1024).toFixed(1)} MB`;
+    const kb = bytes / 1024;
+    return kb < 1024 ? `${kb.toFixed(1)} KB` : `${(kb / 1024).toFixed(1)} MB`;
 }
 
 function updateUploadButton() {
-  if (!uploadBtn) return;
-  if (selectedFiles.length > 0) {
-    uploadBtn.disabled = false;
-    uploadBtn.textContent = "Upload 1 File";
-  } else {
-    uploadBtn.disabled = true;
-    uploadBtn.textContent = "Upload File";
-  }
+    if (!uploadBtn) return;
+    uploadBtn.disabled    = selectedFiles.length === 0;
+    uploadBtn.textContent = selectedFiles.length > 0 ? "Upload 1 File" : "Upload File";
 }
-
-// initialize upload button state
 updateUploadButton();
 
 // =============================
 // === POPUP NOTIFICATION ===
 // =============================
 function showPopup(message, isError = false) {
-  let popup = document.querySelector(".upload-popup");
-  if (!popup) {
-    popup = document.createElement("div");
-    popup.className = "upload-popup";
-    document.body.appendChild(popup);
-  }
-  popup.textContent = message;
-  popup.classList.add("show");
-  popup.classList.toggle("error", isError);
-  setTimeout(() => popup.classList.remove("show"), 3000);
+    let popup = document.querySelector(".upload-popup");
+    if (!popup) {
+        popup = document.createElement("div");
+        popup.className = "upload-popup";
+        document.body.appendChild(popup);
+    }
+    popup.textContent = message;
+    popup.classList.add("show");
+    popup.classList.toggle("error", isError);
+    setTimeout(() => popup.classList.remove("show"), 3000);
 }
 
 // =============================
 // === VALIDATION ===
 // =============================
 function validateBatchAndYear(batchNumber, year) {
-  const currentYear = new Date().getFullYear();
-  const yearNumber = parseInt(year, 10);
-
-  if (!batchNumber || !year) {
-    showPopup("Please enter both batch number and year.", true);
-    return false;
-  }
-  if (!/^\d{1,2}$/.test(batchNumber)) {
-    showPopup("Batch number must be 1–2 digits.", true);
-    return false;
-  }
-  // This line handles the future year check
-  if (!/^\d{4}$/.test(year) || yearNumber > currentYear) {
-    showPopup(`Year must be a valid 4-digit year not exceeding ${currentYear}.`, true);
-    return false;
-  }
-  return true;
+    const currentYear = new Date().getFullYear();
+    if (!batchNumber || !year)                                          { showPopup("Please enter both batch number and year.", true); return false; }
+    if (!/^\d{1,2}$/.test(batchNumber))                                { showPopup("Batch number must be 1–2 digits.", true); return false; }
+    if (!/^\d{4}$/.test(year) || parseInt(year, 10) > currentYear)    { showPopup(`Year must be a valid 4-digit year not exceeding ${currentYear}.`, true); return false; }
+    return true;
 }
 
 // =============================
 // === UPLOAD TAB ACTION ===
 // =============================
 if (uploadBtn) {
-  uploadBtn.addEventListener("click", async () => {
-    const batchNumber = document.getElementById("batchNumber").value.trim();
-    const year = document.getElementById("yearInput").value.trim();
+    uploadBtn.addEventListener("click", async () => {
+        const batchNumber = document.getElementById("batchNumber").value.trim();
+        const year        = document.getElementById("yearInput").value.trim();
 
-    if (!validateBatchAndYear(batchNumber, year)) return;
-    if (selectedFiles.length === 0) {
-      showPopup("Please select a file before uploading.", true);
-      return;
+        if (!validateBatchAndYear(batchNumber, year)) return;
+        if (selectedFiles.length === 0) { showPopup("Please select a file before uploading.", true); return; }
+
+        const progressContainer = document.getElementById("progressContainer");
+        const progressBar       = document.getElementById("progressBar");
+        const progressPercent   = document.getElementById("progressPercent");
+        const progressText      = document.getElementById("progressText");
+
+        const formData = new FormData();
+        formData.append("file",         selectedFiles[0]);
+        formData.append("batch_number", batchNumber);
+        formData.append("batch_year",   year);
+
+        const originalBtnText = uploadBtn.innerText;
+        uploadBtn.innerText   = "⏳ Initializing AI...";
+        uploadBtn.disabled    = true;
+        progressContainer.style.display   = "block";
+        progressBar.style.width           = "0%";
+        progressBar.style.backgroundColor = "#4cc9f0";
+        progressPercent.innerText         = "0%";
+
+        try {
+            const response = await fetch("/upload-journal/MYIPO", { method: "POST", body: formData });
+            if (!response.ok) throw new Error("Server error");
+
+            const reader  = response.body.getReader();
+            const decoder = new TextDecoder();
+            let leftover  = "";
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                const combined = leftover + decoder.decode(value, { stream: true });
+                const lines    = combined.split("\n");
+                leftover       = lines.pop();
+
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                        const data = JSON.parse(line);
+                        if (data.status === "extracting") {
+                            progressBar.style.width   = `${data.percentage}%`;
+                            progressPercent.innerText = `${data.percentage}%`;
+                            progressText.innerText    = `AI reading PDF: Page ${data.current_page}`;
+                            uploadBtn.innerText       = `⏳ Extracting... ${data.percentage}%`;
+                        } else if (data.status === "inserting") {
+                            progressBar.style.backgroundColor = "#2ecc71";
+                            progressBar.style.width   = `${data.percentage}%`;
+                            progressPercent.innerText = `${data.percentage}%`;
+                            progressText.innerText    = `Saving to DB: ${data.current} of ${data.total}`;
+                            uploadBtn.innerText       = `💾 Saving... ${data.percentage}%`;
+                        } else if (data.status === "complete") {
+                            showPopup(`✅ ${data.message}`);
+                            selectedFiles = [];
+                            renderFileList();
+                            document.getElementById("batchNumber").value = "";
+                            document.getElementById("yearInput").value   = "";
+                        } else if (data.status === "error") {
+                            showPopup(`❌ Error: ${data.message}`, true);
+                        }
+                    } catch (e) { console.warn("Stream parse error:", e); }
+                }
+            }
+        } catch (error) {
+            console.error("Upload Error:", error);
+            showPopup("❌ Server error. Check console.", true);
+        } finally {
+            uploadBtn.innerText = originalBtnText;
+            uploadBtn.disabled  = false;
+            setTimeout(() => { progressContainer.style.display = "none"; }, 5000);
+        }
+    });
+}
+
+// =============================
+// === MANAGE TAB — DESC CELL ===
+// =============================
+const DESC_LIMIT = 120;
+
+function makeDescCell(description) {
+    const text = description || "N/A";
+    const td   = document.createElement("td");
+
+    if (text.length <= DESC_LIMIT) {
+        td.textContent = text;
+        return td;
     }
 
-    const progressContainer = document.getElementById("progressContainer");
-    const progressBar = document.getElementById("progressBar");
-    const progressPercent = document.getElementById("progressPercent");
-    const progressText = document.getElementById("progressText");
-    
-    const formData = new FormData();
-    formData.append('file', selectedFiles[0]);
-    formData.append('batch_number', batchNumber);
-    formData.append('batch_year', year);
+    td.style.cssText = "max-width:300px; vertical-align:top;";
 
-    const originalBtnText = uploadBtn.innerText;
-    uploadBtn.innerText = "⏳ Initializing AI...";
-    uploadBtn.disabled = true;
-    
-    progressContainer.style.display = "block";
-    progressBar.style.width = "0%";
-    progressBar.style.backgroundColor = "#4cc9f0"; 
-    progressPercent.innerText = "0%";
+    const preview       = document.createElement("span");
+    preview.className   = "desc-preview";
+    preview.textContent = text.slice(0, DESC_LIMIT) + "…";
+
+    const full           = document.createElement("span");
+    full.className       = "desc-full";
+    full.textContent     = text;
+    full.style.display   = "none";
+
+    const toggle     = document.createElement("button");
+    toggle.className = "desc-toggle-btn";
+    toggle.innerHTML = "&#9660; Show more";
+
+    toggle.addEventListener("click", e => {
+        e.stopPropagation();
+        const expanded        = full.style.display !== "none";
+        preview.style.display = expanded ? "inline" : "none";
+        full.style.display    = expanded ? "none"   : "inline";
+        toggle.innerHTML      = expanded ? "&#9660; Show more" : "&#9650; Show less";
+    });
+
+    td.appendChild(preview);
+    td.appendChild(full);
+    td.appendChild(document.createElement("br"));
+    td.appendChild(toggle);
+    return td;
+}
+
+// =============================
+// === MANAGE TAB — RENDER ===
+// =============================
+function renderManageTable(trademarks) {
+    const tbody = document.getElementById("fileTableBody");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+
+    if (!trademarks || trademarks.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;opacity:0.6;">No records found.</td></tr>`;
+        return;
+    }
+
+    trademarks.forEach(item => {
+        const tr = document.createElement("tr");
+
+        // Checkbox
+        const tdCheck     = document.createElement("td");
+        tdCheck.className = "table-checkbox-col";
+        const cb          = document.createElement("input");
+        cb.type           = "checkbox";
+        cb.className      = "manage-checkbox";
+        cb.dataset.id     = item.id;
+        tdCheck.appendChild(cb);
+
+        // Logo
+        const tdLogo           = document.createElement("td");
+        tdLogo.style.textAlign = "center";
+        if (item.has_logo) {
+            const img     = document.createElement("img");
+            img.src       = `/logo/${item.id}`;
+            img.className = "tm-logo-thumb";
+            img.alt       = "logo";
+            tdLogo.appendChild(img);
+        } else {
+            const ph           = document.createElement("div");
+            ph.className       = "tm-no-logo";
+            ph.textContent     = "—";
+            tdLogo.appendChild(ph);
+        }
+
+        // Applicant
+        const tdApplicant       = document.createElement("td");
+        tdApplicant.textContent = item.applicant_name || "N/A";
+
+        // Class
+        const tdClass            = document.createElement("td");
+        tdClass.textContent      = item.class_indices || "N/A";
+        tdClass.style.whiteSpace = "nowrap";
+
+        // Description (collapsible)
+        const tdDesc = makeDescCell(item.description);
+
+        // Batch / Year
+        const tdBatch            = document.createElement("td");
+        tdBatch.textContent      = (item.batch_number && item.batch_year)
+            ? `${item.batch_number} / ${item.batch_year}`
+            : item.display_name || "N/A";
+        tdBatch.style.whiteSpace = "nowrap";
+
+        // 6 columns: checkbox, logo, applicant, class, description, batch/year
+        tr.append(tdCheck, tdLogo, tdApplicant, tdClass, tdDesc, tdBatch);
+        tbody.appendChild(tr);
+    });
+
+    // Sync selectAll
+    const selectAll = document.getElementById("selectAll");
+    const allBoxes  = document.querySelectorAll(".manage-checkbox:not(#selectAll)");
+    const checked   = document.querySelectorAll(".manage-checkbox:not(#selectAll):checked");
+    if (selectAll) selectAll.checked = allBoxes.length > 0 && allBoxes.length === checked.length;
+}
+
+// =============================
+// === MANAGE TAB — LOAD ===
+// =============================
+async function loadTrademarks({ batch = null, year = null } = {}) {
+    const tbody = document.getElementById("fileTableBody");
+    if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;">Loading…</td></tr>`;
+    }
+
+    const params = new URLSearchParams();
+    if (batch) params.append("batch_number", batch);
+    if (year)  params.append("batch_year",   year);
 
     try {
-      const response = await fetch('/upload-journal/MYIPO', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!response.ok) throw new Error("Server error");
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      
-      // CRUCIAL: The Buffer Fix
-      let leftover = ""; 
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        // Combine any leftover text from the previous chunk with the new chunk
-        const chunk = decoder.decode(value, { stream: true });
-        const combined = leftover + chunk;
-        const lines = combined.split('\n');
-
-        // Save the last element (which is either empty or a partial line) for next time
-        leftover = lines.pop();
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          
-          try {
-            const data = JSON.parse(line);
-
-            if (data.status === "extracting") {
-              progressBar.style.width = `${data.percentage}%`;
-              progressPercent.innerText = `${data.percentage}%`;
-              progressText.innerText = `AI reading PDF: Page ${data.current_page}`;
-              uploadBtn.innerText = `⏳ Extracting... ${data.percentage}%`;
-            } 
-            else if (data.status === "inserting") {
-              // Now this will actually show up!
-              progressBar.style.backgroundColor = "#2ecc71"; 
-              progressBar.style.width = `${data.percentage}%`;
-              progressPercent.innerText = `${data.percentage}%`;
-              progressText.innerText = `Saving to DB: ${data.current} of ${data.total}`;
-              uploadBtn.innerText = `💾 Saving... ${data.percentage}%`;
-            }
-            else if (data.status === "complete") {
-              showPopup(`✅ ${data.message}`);
-              selectedFiles = [];
-              renderFileList();
-              document.getElementById("batchNumber").value = "";
-              document.getElementById("yearInput").value = "";
-              if (typeof loadTrademarks === "function") loadTrademarks();
-            }
-            else if (data.status === "error") {
-              showPopup(`❌ Error: ${data.message}`, true);
-            }
-          } catch (e) {
-            // Ignore parse errors for partial lines (the buffer handles them)
-            console.warn("Stream processing line error:", e);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Upload Error:', error);
-      showPopup("❌ Server error. Check console.", true);
-    } finally {
-      uploadBtn.innerText = originalBtnText;
-      uploadBtn.disabled = false;
-      setTimeout(() => { progressContainer.style.display = "none"; }, 5000);
-    }
-  });
-}
-
-// =============================
-// === UPLOAD CLIENT DATASET ===
-// =============================
-// Function to upload specifically for the Client tab
-async function uploadClientDataset(file) {
-    const formData = new FormData();
-    formData.append('file', file);
-    // Optional: Add metadata if your UI has inputs for these
-    formData.append('applicant_name', document.getElementById('clientName')?.value || 'New Client');
-
-    const response = await fetch('/upload-client', {
-        method: 'POST',
-        body: formData
-    });
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    
-    while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-        
-        for (const line of lines) {
-            if (!line.trim()) continue;
-            const data = JSON.parse(line);
-            
-            // Update your existing Progress Bar IDs
-            if (data.status === "extracting" || data.status === "inserting") {
-                progressBar.style.width = `${data.percentage}%`;
-                progressText.innerText = data.status === "extracting" ? "AI Processing..." : "Saving Client Data...";
-            } else if (data.status === "complete") {
-                showPopup("✅ Client Upload Complete");
-            }
-        }
-    }
-}
-
-// =============================
-// === MANAGE TAB FUNCTIONALITY (DYNAMIC) ===
-// =============================
-
-/**
- * Renders the manage table rows using fetched trademark data.
- * Each item expected: { id, display_name, trademark_name, class_indices, applicant_name, has_logo }
- */
-function renderManageTable(trademarks) {
-  const tbody = document.getElementById("fileTableBody");
-  if (!tbody) return;
-
-  tbody.innerHTML = "";
-
-  if (!trademarks || trademarks.length === 0) {
-    const tr = document.createElement("tr");
-    const td = document.createElement("td");
-    td.colSpan = 2;
-    td.style.textAlign = "center";
-    td.textContent = "No files found.";
-    tr.appendChild(td);
-    tbody.appendChild(tr);
-    return;
-  }
-
-  trademarks.forEach(item => {
-    const tr = document.createElement("tr");
-
-    const tdCheckbox = document.createElement("td");
-    tdCheckbox.classList.add("table-checkbox-col");
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.classList.add("manage-checkbox");
-    cb.dataset.id = item.id;
-    tdCheckbox.appendChild(cb);
-
-    const tdName = document.createElement("td");
-    tdName.textContent = item.display_name || item.trademark_name || `id-${item.id}`;
-
-    if (item.has_logo) {
-      const logoMark = document.createElement("span");
-      logoMark.style.marginLeft = "8px";
-      logoMark.title = "Has logo";
-      logoMark.textContent = "🖼️";
-      tdName.appendChild(logoMark);
-    }
-
-    tr.appendChild(tdCheckbox);
-    tr.appendChild(tdName);
-    tbody.appendChild(tr);
-  });
-
-  // Reset selectAll checkbox state
-  const selectAllCheckbox = document.getElementById("selectAll");
-  const allBoxes = document.querySelectorAll(".manage-checkbox:not(#selectAll)");
-  const checkedBoxes = document.querySelectorAll(".manage-checkbox:not(#selectAll):checked");
-  if (selectAllCheckbox) selectAllCheckbox.checked = (allBoxes.length === checkedBoxes.length && allBoxes.length > 0);
-}
-
-/**
- * Load trademarks from server with optional batch/year filters.
- * Calls GET /api/trademarks?batch_number=...&batch_year=...
- */
-async function loadTrademarks({batch=null, year=null, q=null} = {}) {
-  const params = new URLSearchParams();
-  if (batch) params.append('batch_number', batch);
-  if (year) params.append('batch_year', year);
-  if (q) params.append('q', q);
-
-  try {
-    const res = await fetch('/api/trademarks?' + params.toString());
-    if (!res.ok) {
-      const text = await res.text();
-      console.error('Non-OK response from /api/trademarks:', res.status, text);
-      showPopup("Failed to fetch files from server.", true);
-      return;
-    }
-    const payload = await res.json();
-    if (payload.success) {
-      renderManageTable(payload.trademarks);
-    } else {
-      showPopup("Error fetching data from server.", true);
-    }
-  } catch (err) {
-    console.error('Fetch error', err);
-    showPopup("Server error while fetching files.", true);
-  }
-}
-
-// Auto-load manage data when the manage panel exists
-// if (document.getElementById("fileTableBody")) {
-//   // initial load
-//   loadTrademarks();
-// }
-
-// Keep Select All checkbox logic (works with dynamic rows)
-const selectAllCheckbox = document.getElementById("selectAll");
-if (selectAllCheckbox) {
-  selectAllCheckbox.addEventListener("change", (e) => {
-    const checkboxes = document.querySelectorAll(".manage-checkbox:not(#selectAll)");
-    checkboxes.forEach((box) => (box.checked = e.target.checked));
-  });
-}
-
-// Keep Select All in sync on changes to row checkboxes (delegated)
-document.addEventListener("change", (e) => {
-  if (e.target.classList && e.target.classList.contains("manage-checkbox") && e.target.id !== "selectAll") {
-    const allBoxes = document.querySelectorAll(".manage-checkbox:not(#selectAll)");
-    const checkedBoxes = document.querySelectorAll(".manage-checkbox:not(#selectAll):checked");
-    if (selectAllCheckbox) selectAllCheckbox.checked = (allBoxes.length === checkedBoxes.length && allBoxes.length > 0);
-  }
-});
-
-// Custom Confirmation Popup (re-used from original; defined here only if not present)
-if (typeof showConfirmPopup !== "function") {
-  function showConfirmPopup(message, onConfirm) {
-    let overlay = document.querySelector(".confirm-overlay");
-    if (!overlay) {
-      overlay = document.createElement("div");
-      overlay.className = "confirm-overlay";
-      overlay.innerHTML = `
-        <div class="confirm-box">
-          <p class="confirm-message"></p>
-          <div class="confirm-buttons">
-            <button class="confirm-yes">Yes</button>
-            <button class="confirm-no">No</button>
-          </div>
-        </div>
-      `;
-      document.body.appendChild(overlay);
-    }
-
-    overlay.querySelector(".confirm-message").textContent = message;
-    overlay.classList.add("show");
-
-    overlay.querySelector(".confirm-yes").onclick = () => {
-      overlay.classList.remove("show");
-      onConfirm();
-    };
-    overlay.querySelector(".confirm-no").onclick = () => overlay.classList.remove("show");
-  }
-}
-
-// Delete Button -> calls server API then refreshes
-const deleteBtn = document.querySelector(".manage-delete-btn");
-if (deleteBtn) {
-  deleteBtn.addEventListener("click", () => {
-    const checked = Array.from(document.querySelectorAll(".manage-checkbox:not(#selectAll):checked"));
-    if (checked.length === 0) {
-      showPopup("Please select at least one file to delete.", true);
-      return;
-    }
-
-    showConfirmPopup(`Are you sure you want to delete ${checked.length} file(s)?`, async () => {
-      const ids = checked.map(c => parseInt(c.dataset.id, 10)).filter(Boolean);
-      if (ids.length === 0) {
-        showPopup("No valid IDs selected.", true);
-        return;
-      }
-
-      try {
-        const res = await fetch('/api/trademarks', {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json'
-            // Add CSRF header here if your app requires it
-          },
-          body: JSON.stringify({ ids })
-        });
+        const res = await fetch("/api/trademarks?" + params.toString());
+        if (!res.ok) { showPopup("Failed to fetch records from server.", true); return; }
         const payload = await res.json();
         if (payload.success) {
-          showPopup(`✅ ${payload.deleted} file(s) deleted.`);
-          // refresh table
-          loadTrademarks();
-          if (selectAllCheckbox) selectAllCheckbox.checked = false;
+            renderManageTable(payload.trademarks);
         } else {
-          showPopup("❌ Delete failed: " + (payload.message || "server error"), true);
+            showPopup("Error fetching data from server.", true);
         }
-      } catch (err) {
-        console.error('Delete error', err);
-        showPopup("❌ Server error while deleting.", true);
-      }
-    });
-  });
+    } catch (err) {
+        console.error("Fetch error:", err);
+        showPopup("Server error while fetching records.", true);
+    }
 }
 
-// Search Button -> call server-side search with Year Validation
-const searchBtn = document.querySelector(".manage-search-btn");
+// =============================
+// === SELECT ALL CHECKBOX ===
+// =============================
+const selectAllCheckbox = document.getElementById("selectAll");
+if (selectAllCheckbox) {
+    selectAllCheckbox.addEventListener("change", (e) => {
+        document.querySelectorAll(".manage-checkbox:not(#selectAll)")
+            .forEach(cb => { cb.checked = e.target.checked; });
+    });
+}
+
+document.addEventListener("change", (e) => {
+    if (e.target.classList.contains("manage-checkbox") && e.target.id !== "selectAll") {
+        const all     = document.querySelectorAll(".manage-checkbox:not(#selectAll)");
+        const checked = document.querySelectorAll(".manage-checkbox:not(#selectAll):checked");
+        if (selectAllCheckbox) selectAllCheckbox.checked = all.length > 0 && all.length === checked.length;
+    }
+});
+
+// =============================
+// === SEARCH BUTTON ===
+// =============================
+const searchBtn = document.getElementById("btnSearchDataset");
 if (searchBtn) {
-  searchBtn.addEventListener("click", () => {
-    const batchNumber = document.getElementById("searchBatchNumber").value.trim();
-    const yearInput = document.getElementById("searchYear").value.trim();
+    searchBtn.addEventListener("click", () => {
+        const batchNumber = document.getElementById("searchBatchNumber").value.trim();
+        const yearInput   = document.getElementById("searchYear").value.trim();
 
-    // 1. Basic empty check
-    if (!batchNumber && !yearInput) {
-      showPopup("Please enter batch number or year to search.", true);
-      return;
-    }
+        if (yearInput) {
+            const currentYear = new Date().getFullYear();
+            if (!/^\d{4}$/.test(yearInput)) { showPopup("Year must be a 4-digit number (e.g., 2024).", true); return; }
+            if (parseInt(yearInput, 10) > currentYear) { showPopup(`Year cannot exceed the current year (${currentYear}).`, true); return; }
+        }
+        if (batchNumber && !/^\d{1,2}$/.test(batchNumber)) { showPopup("Batch number must be 1–2 digits.", true); return; }
 
-    // 2. Year Validation (Prevents searching future years)
-    if (yearInput) {
-      const currentYear = new Date().getFullYear();
-      const yearNum = parseInt(yearInput, 10);
-
-      if (!/^\d{4}$/.test(yearInput)) {
-        showPopup("Year must be a 4-digit number (e.g., 2024).", true);
-        return;
-      }
-      
-      if (yearNum > currentYear) {
-        showPopup(`Year cannot exceed the current year (${currentYear}).`, true);
-        return;
-      }
-    }
-
-    // 3. Batch Number Validation (Optional but recommended)
-    if (batchNumber && !/^\d{1,2}$/.test(batchNumber)) {
-        showPopup("Batch number must be 1–2 digits.", true);
-        return;
-    }
-
-    loadTrademarks({
-      batch: batchNumber || null,
-      year: yearInput || null
+        loadTrademarks({ batch: batchNumber || null, year: yearInput || null });
     });
-  });
 }
 
-function clearManageTable(message = "Please enter batch number and/or year to search.") {
-  const tbody = document.getElementById("fileTableBody");
-  if (!tbody) return;
-
-  tbody.innerHTML = "";
-  const tr = document.createElement("tr");
-  const td = document.createElement("td");
-  td.colSpan = 2;
-  td.style.textAlign = "center";
-  td.style.opacity = "0.6";
-  td.textContent = message;
-  tr.appendChild(td);
-  tbody.appendChild(tr);
-
-  const selectAll = document.getElementById("selectAll");
-  if (selectAll) selectAll.checked = false;
-}
-clearManageTable();
-
-// Reset Search Button -> clear inputs and reload
+// =============================
+// === RESET BUTTON ===
+// =============================
 const resetSearchBtn = document.getElementById("resetSearchBtn");
 if (resetSearchBtn) {
-  resetSearchBtn.addEventListener("click", () => {
-    document.getElementById("searchBatchNumber").value = "";
-    document.getElementById("searchYear").value = "";
-    clearManageTable();
-    showPopup("🔄 Search cleared. Table reset.");
-  });
+    resetSearchBtn.addEventListener("click", () => {
+        document.getElementById("searchBatchNumber").value = "";
+        document.getElementById("searchYear").value        = "";
+        loadTrademarks();
+        showPopup("🔄 Search cleared.");
+    });
 }
 
+// =============================
+// === DELETE BUTTON ===
+// =============================
+const deleteBtn = document.getElementById("deleteDatasetBtn");
+if (deleteBtn) {
+    deleteBtn.addEventListener("click", () => {
+        const checked = Array.from(document.querySelectorAll(".manage-checkbox:not(#selectAll):checked"));
+        if (checked.length === 0) { showPopup("Please select at least one record to delete.", true); return; }
+        if (!confirm(`Delete ${checked.length} record(s)? This cannot be undone.`)) return;
+
+        const ids = checked.map(c => parseInt(c.dataset.id, 10)).filter(Boolean);
+        fetch("/api/trademarks", {
+            method:  "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ ids })
+        })
+        .then(r => r.json())
+        .then(payload => {
+            if (payload.success) {
+                showPopup(`✅ ${payload.deleted} record(s) deleted.`);
+                loadTrademarks();
+                if (selectAllCheckbox) selectAllCheckbox.checked = false;
+            } else {
+                showPopup("❌ Delete failed: " + (payload.message || "server error"), true);
+            }
+        })
+        .catch(err => { console.error("Delete error:", err); showPopup("❌ Server error while deleting.", true); });
+    });
+}
