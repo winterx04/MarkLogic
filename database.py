@@ -306,6 +306,20 @@ def get_all_trademarks():
     cur.close(); conn.close()
     return trademarks
 
+def get_all_trademarks_manageTab():
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cur.execute("""
+        SELECT id, serial_number, trademark_name, class_indices, applicant_name, description, category, is_split,
+            (logo_data IS NOT NULL) as has_logo,
+            batch_number, batch_year
+        FROM trademarks
+        ORDER BY id DESC
+    """)
+    trademarks = cur.fetchall()
+    cur.close(); conn.close()
+    return trademarks
+
 def get_logo(trademark_id):
     conn = get_db_connection()
     cur = conn.cursor()
