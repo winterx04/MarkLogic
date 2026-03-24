@@ -6,11 +6,12 @@ let selectedCompare = null;  // 'clientRight' | 'myipo'
 let uploadedFiles = [];      // Stores the File objects
 let currentMode = 'image';   // 'image' | 'pdf' based on file type
 let lastComparisonResults = []; // To store API response for rendering/filtering
-let modalTopMatches = [];      // To store top matches for modal navigation
- 
-const sourceMap = { upload: 'uploadCheckbox', clientLeft: 'clientDatasetCheckbox' };
+let modalTopMatches = [];    // Top 3 matches shown in the modal list
+let modalAllMatches = [];    // Full match list (up to 10) sent to the PDF
+
+const sourceMap  = { upload: 'uploadCheckbox', clientLeft: 'clientDatasetCheckbox' };
 const compareMap = { clientRight: 'clientDatasetRightCheckbox', myipo: 'miyoCheckbox' };
-const itemEls = { upload: 'uploadItem', clientLeft: 'clientDatasetLeft', clientRight: 'clientDatasetRight', myipo: 'miyoItem' };
+const itemEls    = { upload: 'uploadItem', clientLeft: 'clientDatasetLeft', clientRight: 'clientDatasetRight', myipo: 'miyoItem' };
 
 /**
  * INITIALIZATION
@@ -73,7 +74,7 @@ function toggleCompare(key) {
 }
 
 function updateCompareBtn() {
-    const btn = document.getElementById('compareBtn');
+    const btn       = document.getElementById('compareBtn');
     const hasSource = selectedSource === 'clientLeft' || (selectedSource === 'upload' && uploadedFiles.length > 0);
     const hasCompare = !!selectedCompare;
     btn.disabled = !(hasSource && hasCompare);
@@ -99,15 +100,15 @@ function handleDrop(e, id) {
 
 function handleFileUpload(e) {
     processFiles(Array.from(e.target.files));
-    e.target.value = ''; // Reset input
+    e.target.value = '';
 }
 
 function processFiles(files) {
     if (files.length > 0) {
-        uploadedFiles = [files[0]]; // Handle one file for now
+        uploadedFiles = [files[0]];
         const fileName = files[0].name.toLowerCase();
-        currentMode = fileName.endsWith('.pdf') ? 'pdf' : 'image';
-        
+        currentMode    = fileName.endsWith('.pdf') ? 'pdf' : 'image';
+
         renderUploadPreviews();
         if (selectedSource !== 'upload') toggleSource('upload');
         showPopup("✅ File uploaded successfully!");
@@ -115,9 +116,9 @@ function processFiles(files) {
 }
 
 function renderUploadPreviews() {
-    const grid = document.getElementById('uploadPreviewGrid');
+    const grid  = document.getElementById('uploadPreviewGrid');
     const count = document.getElementById('uploadFileCount');
-    const item = document.getElementById('uploadItem');
+    const item  = document.getElementById('uploadItem');
 
     if (!grid || !count || !item) {
         console.warn("Upload preview elements not found in DOM.");
@@ -125,16 +126,16 @@ function renderUploadPreviews() {
     }
 
     if (uploadedFiles.length === 0) {
-        grid.innerHTML = '';
+        grid.innerHTML  = '';
         count.textContent = '';
         item.classList.remove('has-files');
         return;
     }
 
     item.classList.add('has-files');
-    const file = uploadedFiles[0];
+    const file        = uploadedFiles[0];
     count.textContent = file.name;
-    grid.innerHTML = '';
+    grid.innerHTML    = '';
 
     const tile = document.createElement('div');
     tile.className = 'upload-preview-tile';
@@ -144,17 +145,17 @@ function renderUploadPreviews() {
             <div class="pdf-preview-tile-inner"><span class="pdf-icon">📄</span></div>
             <button class="preview-remove-btn" onclick="removeFile(event)">✕</button>`;
     } else {
-        const img = document.createElement('img');
+        const img    = document.createElement('img');
         img.className = 'preview-img';
         const reader = new FileReader();
         reader.onload = e => img.src = e.target.result;
         reader.readAsDataURL(file);
-        
-        const removeBtn = document.createElement('button');
+
+        const removeBtn   = document.createElement('button');
         removeBtn.className = 'preview-remove-btn';
         removeBtn.innerHTML = '✕';
-        removeBtn.onclick = removeFile;
-        
+        removeBtn.onclick   = removeFile;
+
         tile.appendChild(img);
         tile.appendChild(removeBtn);
     }
@@ -174,14 +175,13 @@ function removeFile(e) {
 async function runCompare() {
     const loadingSection = document.getElementById("loadingSection");
     const resultsSection = document.getElementById("resultsSection");
-    const progressFill = document.querySelector(".progress-fill");
-    const resetBtn = document.getElementById("resetBtn");
+    const progressFill   = document.querySelector(".progress-fill");
+    const resetBtn       = document.getElementById("resetBtn");
 
-    // UI Prep
     resultsSection.classList.remove("show");
     loadingSection.classList.add("show");
     progressFill.style.width = "30%";
-    resetBtn.style.display = "none";
+    resetBtn.style.display   = "none";
 
     const formData = new FormData();
     if (selectedSource === 'upload') {
@@ -190,7 +190,7 @@ async function runCompare() {
     } else if (selectedSource === 'clientLeft') {
         formData.append("source_category", "CLIENT");
     }
-    
+
     const targetType = selectedCompare === 'myipo' ? "MYIPO" : "CLIENT";
     formData.append("target", targetType);
 
@@ -204,8 +204,7 @@ async function runCompare() {
         if (!response.ok || results.error) throw new Error(results.error || "Comparison failed");
 
         lastComparisonResults = results;
-        
-        // Final UI Updates
+
         progressFill.style.width = "100%";
         setTimeout(() => {
             loadingSection.classList.remove("show");
@@ -222,7 +221,7 @@ async function runCompare() {
 }
 
 /**
- * HELPER: Determines which URL to use based on the target selected
+ * HELPER: Determines which logo URL to use based on the target selected
  */
 function getLogoUrl(id) {
     if (selectedCompare === 'clientRight') {
@@ -231,13 +230,12 @@ function getLogoUrl(id) {
     return `/logo/${id}`;
 }
 
-
 /**
  * RENDERING RESULTS
  */
 function renderResults(data) {
     const srcLabel = selectedSource === 'upload' ? 'Uploaded File' : 'Client Dataset';
-    const cmpLabel = selectedCompare === 'myipo' ? 'MYIPO Journals' : 'Client Dataset';
+    const cmpLabel = selectedCompare === 'myipo'  ? 'MYIPO Journals' : 'Client Dataset';
     document.getElementById('comparisonInfo').textContent = `Comparing ${srcLabel} with ${cmpLabel}`;
 
     const isGrouped = Array.isArray(data) && data.length > 0 && data[0].matches;
@@ -253,7 +251,7 @@ function renderImageMode(results) {
     const grid = document.getElementById('resultsGrid');
     document.getElementById('sourceBlocks').innerHTML = '';
     grid.innerHTML = '';
-    
+
     document.getElementById('resultsCount').textContent = `${results.length} matches found`;
 
     results.forEach((res, i) => {
@@ -279,7 +277,8 @@ function renderImageMode(results) {
                 </div>
                 <div class="card-label">${res.label}</div>
             </div>`;
-        card.onclick = () => openModal(res, results);
+        // For image mode, all_matches is the same flat results array
+        card.onclick = () => openModal(res, results, results);
         grid.appendChild(card);
     });
 }
@@ -287,7 +286,7 @@ function renderImageMode(results) {
 function renderPDFMode(groups) {
     const sourceBlocks = document.getElementById('sourceBlocks');
     if (!sourceBlocks) return;
-    
+
     document.getElementById('resultsGrid').innerHTML = '';
     sourceBlocks.innerHTML = '';
 
@@ -304,14 +303,15 @@ function renderPDFMode(groups) {
         header.innerHTML = `
             <div class="source-meta"><div class="tm-label">Source Item #${bi + 1}</div></div>
             <span class="match-count-badge has-matches">${group.matches.length} matches</span>`;
-        
+
         const matchList = document.createElement('div');
         matchList.className = 'match-list';
 
         group.matches.forEach(m => {
             const row = document.createElement('div');
             row.className = 'match-row';
-            row.onclick = () => openModal(m, group.matches);
+            // Pass group.all_matches (up to 10) as third arg for PDF use
+            row.onclick = () => openModal(m, group.matches, group.all_matches || group.matches);
             const imgSrc = getLogoUrl(m.id);
             row.innerHTML = `
                 <div class="match-thumb"><img src="${imgSrc}"></div>
@@ -333,38 +333,44 @@ function renderPDFMode(groups) {
 /**
  * MODAL & PDF REPORT
  */
-function openModal(data, allMatches = []) {
+function openModal(data, uiMatches = [], pdfMatches = []) {
     const mainImgSrc = getLogoUrl(data.id);
-    const wrap = document.getElementById('modalImageWrap');
-    wrap.innerHTML = `<img src="${mainImgSrc}" style="width:100%;height:100%;object-fit:contain;">`;
+    const wrap       = document.getElementById('modalImageWrap');
+    wrap.innerHTML   = `<img src="${mainImgSrc}" style="width:100%;height:100%;object-fit:contain;">`;
 
-    document.getElementById("modalCompanyName").textContent = data.label || "N/A";
-    document.getElementById("modalImageSim").textContent = `${data.imgSim}%`;
-    document.getElementById("modalTextSim").textContent = `${data.textSim}%`;
-    document.getElementById("modalTrademarkNum").textContent = data.serial || "N/A";
-    document.getElementById("modalClass").textContent = data.modalClass || "N/A";
-    document.getElementById("modalAgent").textContent = data.modalAgent || "N/A";
-    document.getElementById("modalDescription").textContent = data.description || "N/A";
+    document.getElementById("modalCompanyName").textContent  = data.label       || "N/A";
+    document.getElementById("modalImageSim").textContent     = `${data.imgSim}%`;
+    document.getElementById("modalTextSim").textContent      = `${data.textSim}%`;
+    document.getElementById("modalTrademarkNum").textContent = data.serial       || "N/A";
+    document.getElementById("modalClass").textContent        = data.modalClass   || "N/A";
+    document.getElementById("modalAgent").textContent        = data.modalAgent   || "N/A";
+    document.getElementById("modalDescription").textContent  = data.description  || "N/A";
+
+    // Top 3 (excluding current) shown in the modal list
+    const others    = uiMatches.filter(m => m.id !== data.id).slice(0, 3);
+    modalTopMatches = others;
+
+    // Full list (up to 10, excluding current) used for PDF
+    modalAllMatches = (pdfMatches.length ? pdfMatches : uiMatches)
+        .filter(m => m.id !== data.id);
 
     const matchesList = document.getElementById("modalMatchesList");
     matchesList.innerHTML = "";
 
-    const others = allMatches.filter(m => m.id !== data.id).slice(0, 3);
-    modalTopMatches = others;
     others.forEach(m => {
-        const item = document.createElement('div');
-        item.className = 'modal-match-row';
-        item.style = "display: flex; align-items: center; gap: 15px; padding: 12px; border-bottom: 1px solid #eee; cursor: pointer;";
+        const item      = document.createElement('div');
+        item.className  = 'modal-match-row';
+        item.style      = "display: flex; align-items: center; gap: 15px; padding: 12px; border-bottom: 1px solid #eee; cursor: pointer;";
         const subImgSrc = getLogoUrl(m.id);
-        item.innerHTML = `
+        item.innerHTML  = `
             <img src="${subImgSrc}" style="width: 45px; height: 45px; object-fit: contain;">
             <div style="flex: 1;">
                 <div style="font-weight: 600;">${m.label}</div>
                 <div style="font-size: 0.8rem;">${m.serial || ''}</div>
             </div>
             <div style="font-weight: bold; color: #4f46e5;">${m.totalSim}%</div>`;
-        
-        item.onclick = () => openModal(m, allMatches);
+
+        item.onclick = () => openModal(m, uiMatches, pdfMatches);
         matchesList.appendChild(item);
     });
 
@@ -376,20 +382,21 @@ function closeModal() {
 }
 
 document.getElementById("modalDownload").onclick = async function() {
-    const logoSrc = document.querySelector("#modalImageWrap img").src;
+    const logoSrc    = document.querySelector("#modalImageWrap img").src;
     const trademarkId = logoSrc.split('/').pop();
 
     const reportData = {
-        id: trademarkId,
-        isClientCompare: selectedCompare === 'clientRight',
-        label: document.getElementById("modalCompanyName").textContent,
-        imgSim: document.getElementById("modalImageSim").textContent.replace('%', ''),
-        textSim: document.getElementById("modalTextSim").textContent.replace('%', ''),
-        serial: document.getElementById("modalTrademarkNum").textContent,
-        modalClass: document.getElementById("modalClass").textContent,
-        modalAgent: document.getElementById("modalAgent").textContent,
+        id:          trademarkId,
+        isClient:    selectedCompare === 'clientRight',
+        label:       document.getElementById("modalCompanyName").textContent,
+        imgSim:      document.getElementById("modalImageSim").textContent.replace('%', ''),
+        textSim:     document.getElementById("modalTextSim").textContent.replace('%', ''),
+        serial:      document.getElementById("modalTrademarkNum").textContent,
+        modalClass:  document.getElementById("modalClass").textContent,
+        modalAgent:  document.getElementById("modalAgent").textContent,
         description: document.getElementById("modalDescription").textContent,
-        topMatches: modalTopMatches
+        topMatches:  modalTopMatches,   // top 3 (fallback if allMatches missing)
+        allMatches:  modalAllMatches    // up to 10 — used by generate_pdf for full sections
     };
 
     showPopup("📄 Generating PDF report...");
@@ -401,9 +408,9 @@ document.getElementById("modalDownload").onclick = async function() {
             body: JSON.stringify(reportData)
         });
         const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
+        const url  = window.URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
         a.download = `Report_${reportData.serial}.pdf`;
         a.click();
     } catch (err) {
@@ -415,23 +422,23 @@ document.getElementById("modalDownload").onclick = async function() {
  * RESET
  */
 function resetCompare() {
-    selectedSource = null;
+    selectedSource  = null;
     selectedCompare = null;
-    uploadedFiles = [];
-    
+    uploadedFiles   = [];
+
     document.querySelectorAll('.compare-page-checkbox').forEach(cb => cb.checked = false);
     document.querySelectorAll('.compare-page-item').forEach(el => el.classList.remove('selected', 'has-files'));
-    
+
     renderUploadPreviews();
     document.getElementById('resultsSection').classList.remove('show');
-    document.getElementById('compareBtn').disabled = true;
+    document.getElementById('compareBtn').disabled   = true;
     document.getElementById('resetBtn').style.display = 'none';
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function showPopup(msg, isError = false) {
-    const el = document.getElementById('comparePopup');
+    const el      = document.getElementById('comparePopup');
     el.textContent = msg;
-    el.className = 'compare-page-popup show' + (isError ? ' error' : '');
+    el.className  = 'compare-page-popup show' + (isError ? ' error' : '');
     setTimeout(() => el.classList.remove('show'), 3000);
 }
