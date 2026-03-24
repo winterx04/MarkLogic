@@ -21,21 +21,29 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 import imagehash
 from difflib import SequenceMatcher
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = 'a_secure_random_secret_key'
+app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev_key_only_for_local_use')
 
 # --- Law Firm Configuration ---
 app.config['EXACT_MATCH_THRESHOLD'] = 0.05 
 
-# --- INITIALIZE THE EMAIL ---
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = 'xxin589@gmail.com'  
-app.config['MAIL_PASSWORD'] = 'jjxh vzax yjyj njsu' 
-app.config['MAIL_DEFAULT_SENDER'] = ('MarkLogic Admin', 'xxin589@gmail.com')
+# --- INITIALIZE THE EMAIL USING ENV VARIABLES ---
+app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER')
+app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
+app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS') == 'True'
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
 
+# Setting the default sender as a tuple
+app.config['MAIL_DEFAULT_SENDER'] = (
+    os.getenv('MAIL_SENDER_NAME'), 
+    os.getenv('MAIL_SENDER_EMAIL')
+)
 mail = Mail(app)
 
 # --- INITIALIZE THE MODELS ---
@@ -73,15 +81,15 @@ def menu():
 @app.route('/signin', methods=['GET', 'POST'])
 def signin():
     if request.method == 'POST':
-        email = request.form.get('email')
+        email    = request.form.get('email')
         password = request.form.get('password')
-        user = db.get_user_by_email(email)
+        user     = db.get_user_by_email(email)
 
         if user and check_password_hash(user['password_hash'], password):
             session['logged_in'] = True
-            session['user_id'] = user['id']
-            session['username'] = user['username']
-            session['role'] = user['role']
+            session['user_id']   = user['id']
+            session['username']  = user['username']
+            session['role']      = user['role']
             
             if user['is_temporary_password']:
                 session['force_password_change'] = True
@@ -141,7 +149,7 @@ def user_management():
 @app.route('/api/users/add', methods=['POST'])
 @admin_required
 def api_add_user():
-    data = request.get_json()
+    data                  = request.get_json()
     username, email, role = data.get('name'), data.get('email'), data.get('role')
 
     if not all([username, email, role]):
@@ -154,7 +162,7 @@ def api_add_user():
         new_user = db.get_user_by_email(email)
         db.update_user_role(new_user['id'], role)
 
-        msg = Message('Your MarkLogic Account has been Created', recipients=[email])
+        msg      = Message('Your MarkLogic Account has been Created', recipients=[email])
         msg.body = f"Hello {username},\n\nYour temporary password is: {temp_password}\n\nPlease change it on login."
         mail.send(msg)
         return jsonify({'success': True, 'message': f'Invitation sent to {email}!'})
@@ -205,7 +213,7 @@ def api_update_role():
 @app.route('/api/users/admin_reset_password', methods=['POST'])
 @admin_required
 def api_admin_reset_password():
-    data = request.get_json()
+    data                  = request.get_json()
     user_id, new_password = data.get('id'), data.get('password')
     try:
         db.admin_reset_password(user_id, generate_password_hash(new_password))
@@ -295,15 +303,15 @@ def upload_journal(category):
 
                 db_percent = int((inserted / total_records) * 100)
                 yield json.dumps({
-                    "status": "inserting", 
+                    "status":     "inserting", 
                     "percentage": db_percent, 
-                    "current": inserted, 
-                    "total": total_records
+                    "current":    inserted, 
+                    "total":      total_records
                 }) + "\n"
 
             ml_model.build_logo_index()
             yield json.dumps({
-                "status": "complete", 
+                "status":  "complete", 
                 "success": True, 
                 "message": f"Successfully imported {inserted} records."
             }) + "\n"
@@ -335,41 +343,48 @@ def upload_client_dataset():
         try:
             if filename.endswith('.pdf'):
                 extractor = UltraRobustExtractor()
+                
                 for update in extractor.extract_all(io.BytesIO(file_bytes), start_page=1):
                     if update.get('status') == 'extraction_complete':
                         results = update.get('results', [])
                         total   = len(results)
+                        
                         for idx, tm in enumerate(results):
                             emb = None
                             if tm.get('logo_data'):
                                 emb = ml_model.generate_image_embedding(io.BytesIO(tm['logo_data']))
+                            
                             db.insert_client_trademark({
-                                'file_name':     user_file_name,
-                                'logo_data':     tm.get('logo_data'),
+                                'file_name':      user_file_name,
+                                'logo_data':      tm.get('logo_data'),
                                 'logo_embedding': emb,
                                 'applicant_name': tm.get('applicant_name') or user_file_name,
-                                'description':   tm.get('description') or "Extracted from PDF",
-                                'custom_date':   user_date
+                                'description':    tm.get('description') or "Extracted from PDF",
+                                'custom_date':    user_date
                             })
+
                             yield json.dumps({
-                                "status": "inserting", 
+                                "status":     "inserting", 
                                 "percentage": int(((idx+1)/total)*100)
                             }) + "\n"
                     else:
                         yield json.dumps(update) + "\n"
+
             else:
                 yield json.dumps({"status": "extracting", "percentage": 50}) + "\n"
                 clean_logo = extract_logo_from_bytes(file_bytes)
-                emb = ml_model.generate_image_embedding(io.BytesIO(clean_logo))
+                emb        = ml_model.generate_image_embedding(io.BytesIO(clean_logo))
+                
                 db.insert_client_trademark({
-                    'file_name':     user_file_name,
-                    'logo_data':     clean_logo,
+                    'file_name':      user_file_name,
+                    'logo_data':      clean_logo,
                     'logo_embedding': emb,
                     'applicant_name': user_file_name,
-                    'description':   "Manual Image Upload",
-                    'custom_date':   user_date
+                    'description':    "Manual Image Upload",
+                    'custom_date':    user_date
                 })
                 yield json.dumps({"status": "complete", "success": True, "message": "Image saved to client dataset."}) + "\n"
+                return
 
             yield json.dumps({"status": "complete", "success": True, "message": "Dataset updated successfully."}) + "\n"
 
@@ -386,27 +401,33 @@ def upload_client_dataset():
 @admin_required
 def api_get_client_trademarks():
     search_query = request.args.get('q', '').strip()
+    
     conn = db.get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    
     if search_query:
-        cur.execute("""
+        sql = """
             SELECT id, applicant_name, description, upload_date 
             FROM client_trademarks 
             WHERE applicant_name ILIKE %s OR description ILIKE %s 
             ORDER BY upload_date DESC
-        """, (f'%{search_query}%', f'%{search_query}%'))
+        """
+        cur.execute(sql, (f'%{search_query}%', f'%{search_query}%'))
     else:
         cur.execute("SELECT id, applicant_name, description, upload_date FROM client_trademarks ORDER BY upload_date DESC")
+    
     rows    = cur.fetchall()
     results = []
     for r in rows:
         results.append({
-            'id':           r['id'],
+            'id':             r['id'],
             'applicant_name': r['applicant_name'],
-            'description':  r['description'],
-            'upload_date':  str(r['upload_date']) if r['upload_date'] else "N/A"
+            'description':    r['description'],
+            'upload_date':    str(r['upload_date']) if r['upload_date'] else "N/A"
         })
-    cur.close(); conn.close()
+        
+    cur.close()
+    conn.close()
     return jsonify(results)
 
 @app.route('/api/client-trademarks', methods=['DELETE'])
@@ -416,6 +437,7 @@ def api_delete_client_trademarks():
     ids  = data.get('ids', [])
     if not ids:
         return jsonify({'success': False}), 400
+    
     conn = db.get_db_connection()
     cur  = conn.cursor()
     cur.execute("DELETE FROM client_trademarks WHERE id = ANY(%s)", (ids,))
@@ -432,7 +454,7 @@ def get_client_logo_route(client_id):
     return "Not found", 404
 
 # ==============================================================================
-# TRADEMARKS API
+# TRADEMARKS — Search & Manage API
 # ==============================================================================
 
 @app.route('/api/trademarks', methods=['GET'])
@@ -467,18 +489,18 @@ def api_trademarks():
             display_name = r.get('serial_number') or f"id-{r.get('id')}"
 
         results.append({
-            'id':            r.get('id'),
-            'serial_number': r.get('serial_number'),
-            'display_name':  display_name,
+            'id':             r.get('id'),
+            'serial_number':  r.get('serial_number'),
+            'display_name':   display_name,
             'trademark_name': r.get('trademark_name'),
-            'class_indices': r.get('class_indices'),
+            'class_indices':  r.get('class_indices'),
             'applicant_name': r.get('applicant_name'),
-            'description':   r.get('description'),
-            'batch_number':  r.get('batch_number'),
-            'batch_year':    r.get('batch_year'),
-            'category':      r.get('category'),
-            'is_split':      r.get('is_split'),
-            'has_logo':      bool(r.get('has_logo'))
+            'description':    r.get('description'),
+            'batch_number':   r.get('batch_number'),
+            'batch_year':     r.get('batch_year'),
+            'category':       r.get('category'),
+            'is_split':       r.get('is_split'),
+            'has_logo':       bool(r.get('has_logo'))
         })
 
     return jsonify({'success': True, 'trademarks': results})
@@ -503,7 +525,7 @@ def api_delete_trademarks():
     return jsonify({'success': True, 'deleted': deleted, 'errors': errors})
 
 # ===============================================================================================
-# SEARCH & COMPARISON API
+# SEARCH & TEXT/IMAGE SEARCH
 # ===============================================================================================
 
 @app.route('/search')
@@ -549,8 +571,8 @@ def api_image_search():
     if not match_ids:
         return jsonify([])
 
-    results      = db.search_trademarks(words=words, class_filter=class_filter, id_list=match_ids)
-    results_dict = {row['id']: dict(row) for row in results}
+    results        = db.search_trademarks(words=words, class_filter=class_filter, id_list=match_ids)
+    results_dict   = {row['id']: dict(row) for row in results}
     sorted_results = []
     for rid in match_ids:
         if rid in results_dict:
@@ -568,17 +590,17 @@ def compare():
 
 def extract_logo_from_bytes(img_bytes, white_thresh=240):
     try:
-        img  = PILImage.open(io.BytesIO(img_bytes)).convert("RGB")
-        arr  = np.array(img)
-        mask = np.any(arr < white_thresh, axis=2)
+        img      = PILImage.open(io.BytesIO(img_bytes)).convert("RGB")
+        arr      = np.array(img)
+        mask     = np.any(arr < white_thresh, axis=2)
         col_sums = np.sum(mask, axis=0)
         
         w          = img.width
         start_scan = int(w * 0.15)
         end_scan   = int(w * 0.85)
         
-        max_gap_len    = 0
-        max_gap_start  = 0
+        max_gap_len       = 0
+        max_gap_start     = 0
         current_gap_len   = 0
         current_gap_start = 0
 
@@ -596,13 +618,10 @@ def extract_logo_from_bytes(img_bytes, white_thresh=240):
         if current_gap_len > max_gap_len:
             max_gap_start = current_gap_start
 
-        if max_gap_len > 15:
-            left_img = img.crop((0, 0, max_gap_start, img.height))
-        else:
-            left_img = img
-
+        left_img  = img.crop((0, 0, max_gap_start, img.height)) if max_gap_len > 15 else img
         left_arr  = np.array(left_img)
         left_mask = np.any(left_arr < white_thresh, axis=2)
+
         if left_mask.any():
             ys, xs     = np.where(left_mask)
             tight_crop = left_img.crop((xs.min(), ys.min(), xs.max() + 1, ys.max() + 1))
@@ -632,19 +651,18 @@ def orb_match_score_bytes(b1: bytes, b2: bytes) -> float:
     try:
         a = cv2.imdecode(np.frombuffer(b1, np.uint8), cv2.IMREAD_GRAYSCALE)
         b = cv2.imdecode(np.frombuffer(b2, np.uint8), cv2.IMREAD_GRAYSCALE)
-        if a is None or b is None:
-            return 0.0
+        if a is None or b is None: return 0.0
+
         orb    = cv2.ORB_create(500)
         k1, d1 = orb.detectAndCompute(a, None)
         k2, d2 = orb.detectAndCompute(b, None)
-        if d1 is None or d2 is None:
-            return 0.0
+        if d1 is None or d2 is None: return 0.0
+
         bf      = cv2.BFMatcher(cv2.NORM_HAMMING)
         matches = bf.knnMatch(d1, d2, k=2)
         good    = 0
         for m_n in matches:
-            if len(m_n) < 2:
-                continue
+            if len(m_n) < 2: continue
             m, n = m_n
             if m.distance < 0.75 * n.distance:
                 good += 1
@@ -660,8 +678,7 @@ def orb_similarity(img_bytes1, img_bytes2):
         orb    = cv2.ORB_create(500)
         k1, d1 = orb.detectAndCompute(img1, None)
         k2, d2 = orb.detectAndCompute(img2, None)
-        if d1 is None or d2 is None:
-            return 0.0
+        if d1 is None or d2 is None: return 0.0
         bf      = cv2.BFMatcher(cv2.NORM_HAMMING)
         matches = bf.knnMatch(d1, d2, k=2)
         good    = 0
@@ -692,8 +709,7 @@ def seq_ratio(a: str, b: str) -> float:
 def jaccard_tokens(a: str, b: str) -> float:
     sa = set((a or "").lower().split())
     sb = set((b or "").lower().split())
-    if not sa and not sb:
-        return 0.0
+    if not sa and not sb: return 0.0
     return len(sa & sb) / len(sa | sb)
 
 # ===============================================================================================
@@ -708,8 +724,8 @@ def perform_comparison():
     words_field     = request.form.get('words', '').strip()
 
     if target == 'CLIENT':
-        db_data    = db.get_all_client_embeddings()
-        table_name = "client_trademarks"
+        db_data       = db.get_all_client_embeddings()
+        table_name    = "client_trademarks"
         query_columns = """
             id,
             applicant_name as trademark_name,
@@ -721,8 +737,8 @@ def perform_comparison():
             logo_data
         """
     else:
-        db_data    = db.get_all_embeddings(category=target)
-        table_name = "trademarks"
+        db_data       = db.get_all_embeddings(category=target)
+        table_name    = "trademarks"
         query_columns = """
             id, trademark_name, serial_number, applicant_name, description,
             class_indices, agent_details, logo_data
@@ -751,7 +767,7 @@ def perform_comparison():
 
         if filename.endswith('.pdf'):
             results_from_pdf = []
-            extractor = UltraRobustExtractor()
+            extractor        = UltraRobustExtractor()
             for update in extractor.extract_all(io.BytesIO(file_bytes), start_page=1):
                 if update.get('status') == 'extraction_complete':
                     results_from_pdf = update.get('results', [])
@@ -852,21 +868,17 @@ def perform_comparison():
 
         for db_id in candidate_ids:
             row = master_db_lookup.get(db_id)
-            if not row:
-                continue
-            if not q_name and not q_has_img:
-                continue
+            if not row: continue
+            if not q_name and not q_has_img: continue
 
             db_name = normalize(row['trademark_name'] or "")
             t_ai    = t_sim_map.get(db_id, 0.0)
             l_ai    = l_sim_map.get(db_id, 0.0)
 
             if q_has_img:
-                if t_ai < 0.3 and l_ai < 0.3:
-                    continue
+                if t_ai < 0.3 and l_ai < 0.3: continue
             else:
-                if t_ai < 0.3:
-                    continue
+                if t_ai < 0.3: continue
 
             if not q_name or not db_name:
                 literal = 0.0
@@ -907,16 +919,18 @@ def perform_comparison():
                     'modalAgent':  row['agent_details']
                 })
 
+        # Sort all matches by score
         match_list = sorted(
             match_list,
             key=lambda x: (x['totalSim'], x['textSim'], x['imgSim']),
             reverse=True
-        )[:5]
+        )
 
         if match_list:
             final_results.append({
                 'query_serial': q.get('serial_number') or q_name_raw or f"Item {i+1}",
-                'matches':      match_list
+                'matches':      match_list[:3],   # top 3 for UI display
+                'all_matches':  match_list[:20]   # up to {n} for PDF
             })
 
     cur.close()
@@ -932,16 +946,18 @@ def generate_pdf():
     data         = request.get_json()
     trademark_id = data.get('id')
     is_client    = data.get('isClient', False)
-    top_matches  = data.get("topMatches", [])
+
+    # Use allMatches (full list for PDF) if provided, fall back to topMatches (UI top 3)
+    all_matches = data.get("allMatches") or data.get("topMatches", [])
 
     if is_client:
         logo_bytes = db.get_client_logo(trademark_id)
     else:
         logo_bytes = db.get_logo(trademark_id)
 
-    # ── Split matches into two tiers ─────────────────────────────────────────
-    high_matches  = [m for m in top_matches if float(m.get('totalSim', 0)) >= 70]
-    other_matches = [m for m in top_matches if 30 <= float(m.get('totalSim', 0)) < 70]
+    # Split into two tiers
+    high_matches  = [m for m in all_matches if float(m.get('totalSim', 0)) >= 70]
+    other_matches = [m for m in all_matches if 30 <= float(m.get('totalSim', 0)) < 70]
 
     buffer = io.BytesIO()
     doc    = SimpleDocTemplate(buffer, pagesize=A4)
@@ -980,14 +996,14 @@ def generate_pdf():
 
     elements.append(Spacer(1, 20))
 
-    # Query metadata
+    # Query metadata table
     table_data = [
-        [Paragraph("<b>Trademark Name:</b>",  styles['Normal']), Paragraph(str(data.get('label', '')),      styles['Normal'])],
-        [Paragraph("<b>Serial Number:</b>",   styles['Normal']), Paragraph(str(data.get('serial', '')),     styles['Normal'])],
-        [Paragraph("<b>Class:</b>",           styles['Normal']), Paragraph(str(data.get('modalClass', '')), styles['Normal'])],
-        [Paragraph("<b>Agent:</b>",           styles['Normal']), Paragraph(str(data.get('modalAgent', '')), styles['Normal'])],
-        [Paragraph("<b>Image Similarity:</b>",styles['Normal']), Paragraph(f"{data.get('imgSim')}%",        styles['Normal'])],
-        [Paragraph("<b>Text Similarity:</b>", styles['Normal']), Paragraph(f"{data.get('textSim')}%",       styles['Normal'])],
+        [Paragraph("<b>Trademark Name:</b>",   styles['Normal']), Paragraph(str(data.get('label', '')),      styles['Normal'])],
+        [Paragraph("<b>Serial Number:</b>",    styles['Normal']), Paragraph(str(data.get('serial', '')),     styles['Normal'])],
+        [Paragraph("<b>Class:</b>",            styles['Normal']), Paragraph(str(data.get('modalClass', '')), styles['Normal'])],
+        [Paragraph("<b>Agent:</b>",            styles['Normal']), Paragraph(str(data.get('modalAgent', '')), styles['Normal'])],
+        [Paragraph("<b>Image Similarity:</b>", styles['Normal']), Paragraph(f"{data.get('imgSim')}%",        styles['Normal'])],
+        [Paragraph("<b>Text Similarity:</b>",  styles['Normal']), Paragraph(f"{data.get('textSim')}%",       styles['Normal'])],
     ]
     t = Table(table_data, colWidths=[120, 350])
     t.setStyle(TableStyle([
@@ -1003,10 +1019,12 @@ def generate_pdf():
     elements.append(Paragraph(data.get('description', 'N/A'), styles['Normal']))
     elements.append(Spacer(1, 25))
 
-    # Helper: render one match row
+    # Helper: render a single match row
     def render_match_row(match):
+        # Try trademarks table first, fall back to client_trademarks
         match_logo = db.get_logo(match["id"]) or db.get_client_logo(match["id"])
         row = []
+
         if match_logo:
             img_data = io.BytesIO(match_logo)
             img      = RLImage(img_data, width=60, height=60)
@@ -1025,25 +1043,26 @@ def generate_pdf():
 
         match_table = Table([row], colWidths=[80, 390])
         match_table.setStyle(TableStyle([
-            ('GRID',   (0, 0), (-1, -1), 0.5, colors.grey),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('PADDING',(0, 0), (-1, -1), 6),
+            ('GRID',    (0, 0), (-1, -1), 0.5, colors.grey),
+            ('VALIGN',  (0, 0), (-1, -1), 'MIDDLE'),
+            ('PADDING', (0, 0), (-1, -1), 6),
         ]))
         return match_table
 
-    def render_rule(rule_color):
+    def render_rule(hex_color):
         rule = Table([['']], colWidths=[470])
         rule.setStyle(TableStyle([
-            ('LINEBELOW',     (0, 0), (-1, -1), 1.5, rule_color),
+            ('LINEBELOW',     (0, 0), (-1, -1), 1.5, colors.HexColor(hex_color)),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ]))
         return rule
 
     # High similarity section (>= 70%)
     elements.append(Paragraph("⚠ High Similarity Matches (70% and above)", high_heading))
+    elements.append(render_rule('#c0392b'))
+    elements.append(Spacer(1, 6))
+
     if high_matches:
-        elements.append(render_rule(colors.HexColor('#c0392b')))
-        elements.append(Spacer(1, 6))
         for match in high_matches:
             elements.append(render_match_row(match))
             elements.append(Spacer(1, 8))
@@ -1052,11 +1071,12 @@ def generate_pdf():
 
     elements.append(Spacer(1, 20))
 
-    # Other similarity section (30–69%)
+    # Other similarity section (30 - 69%)
     elements.append(Paragraph("Other Similar Matches (30% – 69%)", other_heading))
+    elements.append(render_rule('#2471a3'))
+    elements.append(Spacer(1, 6))
+
     if other_matches:
-        elements.append(render_rule(colors.HexColor('#2471a3')))
-        elements.append(Spacer(1, 6))
         for match in other_matches:
             elements.append(render_match_row(match))
             elements.append(Spacer(1, 8))
@@ -1066,7 +1086,8 @@ def generate_pdf():
     doc.build(elements)
     buffer.seek(0)
 
-    filename = f"Report_{data.get('serial', 'unknown')}.pdf"
+    label_clean = re.sub(r'[\\/*?:"<>|]', '', data.get('label', 'unknown')).strip()
+    filename = f"Report_{label_clean}.pdf"
     return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
 
 # ===============================================================================================
