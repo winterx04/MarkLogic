@@ -23,9 +23,13 @@ import imagehash
 from difflib import SequenceMatcher
 import os
 from dotenv import load_dotenv
+from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent
+print("Running script:", __file__, "CWD:", os.getcwd(), flush=True)
 load_dotenv()
-
+#load_dotenv()
+print("ENV LOADED:", os.getenv("FLASK_RUN_HOST"), os.getenv("FLASK_RUN_PORT"), flush=True)
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev_key_only_for_local_use')
 
@@ -1110,4 +1114,10 @@ def get_evidence(trademark_id):
 
 if __name__ == '__main__':
     db.init_db()
-    app.run(debug=True, threaded=True)
+        # Get host and port from environment, fallback to defaults
+    host = os.getenv("FLASK_RUN_HOST", "127.0.0.1")
+    port = int(os.getenv("FLASK_RUN_PORT", 5000))
+    print(f"Starting Flask on {host}:{port}")
+
+    app.run(host=host, port=port, debug=True)
+    
