@@ -1,18 +1,9 @@
-import os
+# t.py
 from dotenv import load_dotenv
-from pathlib import Path
+load_dotenv()  # MUST come first
 
-# 👇 Force absolute path to .env
-env_path = Path(__file__).resolve().parent / ".env"
+from app import app  # now env variables are loaded
 
-print("USING ENV PATH:", env_path)
-print("EXISTS:", env_path.exists())
-
-load_dotenv(dotenv_path=env_path)
-
-print("FINAL CONFIG:", {
-    "DB_HOST": os.getenv("DB_HOST"),
-    "DB_NAME": os.getenv("DB_NAME"),
-    "DB_USER": os.getenv("DB_USER"),
-    "DB_PASS": os.getenv("DB_PASS"),
-})
+print("MAIL_SERVER:", app.config['MAIL_SERVER'])
+print("MAIL_PORT:", app.config['MAIL_PORT'])
+print("MAIL_USE_TLS:", app.config['MAIL_USE_TLS'])
