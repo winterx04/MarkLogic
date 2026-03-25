@@ -38,10 +38,11 @@ app.config['EXACT_MATCH_THRESHOLD'] = 0.05
 
 # --- INITIALIZE THE EMAIL USING ENV VARIABLES ---
 app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER')
+#app.config['MAIL_SERVER'] = 
 app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
-app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS') == 'True'
+#app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS') == 'True'
 app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
-app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+#app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
 
 # Setting the default sender as a tuple
 app.config['MAIL_DEFAULT_SENDER'] = (
