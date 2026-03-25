@@ -47,3 +47,25 @@ Logo have diff text (Make it dynamic/robust to detect)
 
 
 Need fix UI for showing similarity (comparison for PDF)
+
+
+
+
+# Email Settings
+MAIL_SERVER=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USE_TLS=True
+MAIL_USERNAME=xxin589@gmail.com
+MAIL_PASSWORD=jjxh vzax yjyj njsu
+MAIL_SENDER_NAME=MarkLogic
+MAIL_SENDER_EMAIL=xxin589@gmail.com
+
+# Database Settings
+DB_HOST=localhost
+DB_NAME=marklogic
+DB_USER=postgres
+DB_PASS=postgres
+
+
+#Flask
+FLASK_SECRET_KEY=1a314e103d8b86b948473074c4d6e5f36feadde3351d6e02
