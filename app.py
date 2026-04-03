@@ -903,21 +903,22 @@ def perform_comparison():
             if img_sim_final > 0.92:
                 img_sim_final = 1.0
 
-            if q_name and q_has_img:
-                total, threshold = (text_sim_final * 0.45 + img_sim_final * 0.55), 0.35
+            # Determine threshold for inclusion based on available signals
+            if q_has_img and q_name:
+                threshold = 0.35
             elif q_has_img:
-                total, threshold = img_sim_final, 0.45
+                threshold = 0.45
             elif q_name:
-                total, threshold = text_sim_final, 0.35
+                threshold = 0.35
             else:
-                total, threshold = 0.0, 1.0
+                threshold = 1.0
 
-            if total >= threshold:
+            # A match is included if EITHER score meets the threshold
+            if img_sim_final >= threshold or text_sim_final >= threshold:
                 match_list.append({
                     'id':          db_id,
                     'serial':      row['serial_number'],
                     'label':       row['trademark_name'] or row['applicant_name'],
-                    'totalSim':    round(total          * 100, 2),
                     'textSim':     round(text_sim_final * 100, 2),
                     'imgSim':      round(img_sim_final  * 100, 2),
                     'description': row['description'],
@@ -925,10 +926,10 @@ def perform_comparison():
                     'modalAgent':  row['agent_details']
                 })
 
-        # Sort all matches by score
+        # Sort by the best individual score (whichever is higher)
         match_list = sorted(
             match_list,
-            key=lambda x: (x['totalSim'], x['textSim'], x['imgSim']),
+            key=lambda x: max(x['imgSim'], x['textSim']),
             reverse=True
         )
 
@@ -959,9 +960,9 @@ def generate_pdf():
     else:
         logo_bytes = db.get_logo(trademark_id)
 
-    # Split into tiers
-    high_matches  = [m for m in all_matches if float(m.get('totalSim', 0)) >= 70]
-    other_matches = [m for m in all_matches if float(m.get('totalSim', 0)) < 70]
+    # Split into tiers: high if EITHER imgSim OR textSim >= 70
+    high_matches  = [m for m in all_matches if float(m.get('imgSim', 0)) >= 70 or float(m.get('textSim', 0)) >= 70]
+    other_matches = [m for m in all_matches if float(m.get('imgSim', 0)) < 70 and float(m.get('textSim', 0)) < 70]
 
     buffer = io.BytesIO()
     # Reduced margins slightly to ensure the side-by-side table fits easily
@@ -1037,7 +1038,8 @@ def generate_pdf():
         info_text = (
             f"<b>{match.get('label', '')}</b><br/>"
             f"Serial: {match.get('serial', '')}<br/>"
-            f"Similarity: {match.get('totalSim', '')}%"
+            f"Image Similarity: {match.get('imgSim', '')}%<br/>"
+            f"Text Similarity: {match.get('textSim', '')}%"
         )
         row.append(Paragraph(info_text, styles['Normal']))
 
@@ -1247,4 +1249,3 @@ if __name__ == '__main__':
     print(f"Starting Flask on {host}:{port}")
 
     app.run(host=host, port=port, debug=True)
-    
