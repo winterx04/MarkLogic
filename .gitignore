@@ -4,3 +4,5 @@
 /models/*.pt
 *.pyc
 .DS_Store
+.env
+/final_dataset/
