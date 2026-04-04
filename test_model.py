@@ -180,7 +180,7 @@ def prompt_input():
 def main():
     parser = argparse.ArgumentParser(description="Test your trained YOLO trademark model.")
     parser.add_argument("--input",      default=None,                              help="Path to image (.png/.jpg) or PDF")
-    parser.add_argument("--model",      default="runs/detect/train11/weights/best.pt", help="Path to trained model .pt file")
+    parser.add_argument("--model",      default="runs/detect/train13/weights/best.pt", help="Path to trained model .pt file")
     parser.add_argument("--conf",       type=float, default=0.25,                 help="Confidence threshold (default: 0.25)")
     parser.add_argument("--out",        default="test_results",                   help="Output folder for annotated images")
     parser.add_argument("--start_page", type=int,   default=4,                    help="PDF: first page to process")
