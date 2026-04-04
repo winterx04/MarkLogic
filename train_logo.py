@@ -5,37 +5,47 @@ def main():
     # 1. Hardware Verification
     if torch.cuda.is_available():
         print(f"✅ GPU found: {torch.cuda.get_device_name(0)}")
-        # Clear cache before starting to free up any fragmented VRAM
         torch.cuda.empty_cache()
         device = 0
     else:
         print("❌ GPU not found by PyTorch. Falling back to CPU.")
         device = "cpu"
 
-    # 2. Load the model
-    # yolov8s is a good balance for a 3050. 
-    # If you still get memory errors, switch this to "yolov8n.pt" (Nano)
-    # model = YOLO("yolov8s.pt")                  train6 is old model now is on train8
-    model = YOLO(r"C:\\xampp\\htdocs\\MarkLogic\\runs\\detect\\train9\\weights\\best.pt")
-    # 3. Tuned Training Parameters
-    model.train(
-        data="logo_dataset.yaml",
-        epochs=40,
-        imgsz=640,          # Standard size. Do not go higher on 4GB VRAM.
-        batch=8,            # TUNED: 16 is likely too high for 4GB. 8 is the "Sweet Spot".
-        device=device,
-        
-        # PC SPECIFIC TUNING:
-        workers=4,          # Ryzen 5 5600H has 6 cores. 4 workers is efficient without lag.
-        amp=True,           # Automatic Mixed Precision: Uses half-memory for math (Saves VRAM).
-        cache=True,         # You have 16GB RAM; caching images in system RAM speeds up training.
-        
-        # ACCURACY TUNING:
-        patience=10,        # Early stopping: stops if no improvement for 10 epochs.
-        overlap_mask=True,  # Better for overlapping logos.
-        val=True,           # Run validation after each epoch to monitor progress.
-        lr0=0.0001          # Learning rate: Reduce learning rate slightly so the model doesn't "forget" previous learning
+    # 2. Load base model (fresh start — new 9-class dataset is different from old logo-only model)
+    # yolov8s = small, good balance for 4GB VRAM + 9 classes
+    # Switch to yolov8n.pt if you get CUDA out of memory errors
+    model = YOLO("yolov8s.pt")
 
+    # 3. Training
+    model.train(
+        data=r"C:\\Users\\xxin5\\MarkLogic\\final_dataset\\logo_dataset.yaml",
+
+        epochs=100,         # More epochs since dataset is small (48 images)
+                            # Early stopping will kick in before 100 if model converges
+
+        imgsz=640,          # Standard size, fine for 4GB VRAM
+        batch=8,            # Sweet spot for 4GB VRAM with 9 classes
+
+        device=device,
+
+        # PC SPECIFIC TUNING (Ryzen 5 5600H + 16GB RAM):
+        workers=4,
+        amp=True,           # Saves VRAM with mixed precision
+        cache=True,         # Cache images in RAM for faster training
+
+        # ACCURACY TUNING:
+        patience=20,        # Increased from 10 — gives model more time to improve on small dataset
+        val=True,
+        lr0=0.01,           # Reset to default — starting fresh so no need for low LR
+        warmup_epochs=5,    # Gentle warmup since dataset is small
+
+        # DATA AUGMENTATION (critical for small datasets):
+        augment=True,
+        flipud=0.1,
+        fliplr=0.5,
+        mosaic=0.5,         # Combine 4 images — helps with small dataset
+        degrees=5.0,        # Small rotation — logos can be slightly tilted
+        scale=0.3,          # Random scale
     )
 
 if __name__ == "__main__":
