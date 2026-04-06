@@ -903,21 +903,22 @@ def perform_comparison():
             if img_sim_final > 0.92:
                 img_sim_final = 1.0
 
-            if q_name and q_has_img:
-                total, threshold = (text_sim_final * 0.45 + img_sim_final * 0.55), 0.35
+            # Determine threshold for inclusion based on available signals
+            if q_has_img and q_name:
+                threshold = 0.35
             elif q_has_img:
-                total, threshold = img_sim_final, 0.45
+                threshold = 0.45
             elif q_name:
-                total, threshold = text_sim_final, 0.35
+                threshold = 0.35
             else:
-                total, threshold = 0.0, 1.0
+                threshold = 1.0
 
-            if total >= threshold:
+            # A match is included if EITHER score meets the threshold
+            if img_sim_final >= threshold or text_sim_final >= threshold:
                 match_list.append({
                     'id':          db_id,
                     'serial':      row['serial_number'],
                     'label':       row['trademark_name'] or row['applicant_name'],
-                    'totalSim':    round(total          * 100, 2),
                     'textSim':     round(text_sim_final * 100, 2),
                     'imgSim':      round(img_sim_final  * 100, 2),
                     'description': row['description'],
@@ -925,10 +926,10 @@ def perform_comparison():
                     'modalAgent':  row['agent_details']
                 })
 
-        # Sort all matches by score
+        # Sort by the best individual score (whichever is higher)
         match_list = sorted(
             match_list,
-            key=lambda x: (x['totalSim'], x['textSim'], x['imgSim']),
+            key=lambda x: max(x['imgSim'], x['textSim']),
             reverse=True
         )
 
@@ -946,14 +947,12 @@ def perform_comparison():
 # ===============================================================================================
 # DOWNLOAD REPORT AS PDF FORMAT
 # ===============================================================================================
-
 @app.route('/api/generate_pdf', methods=['POST'])
 def generate_pdf():
     data         = request.get_json()
     trademark_id = data.get('id')
     is_client    = data.get('isClient', False)
 
-    # Use allMatches (full list for PDF) if provided, fall back to topMatches (UI top 3)
     all_matches = data.get("allMatches") or data.get("topMatches", [])
 
     if is_client:
@@ -961,140 +960,268 @@ def generate_pdf():
     else:
         logo_bytes = db.get_logo(trademark_id)
 
-    # Split into two tiers
-    high_matches  = [m for m in all_matches if float(m.get('totalSim', 0)) >= 70]
-    other_matches = [m for m in all_matches if 30 <= float(m.get('totalSim', 0)) < 70]
+    # Split into tiers: high if EITHER imgSim OR textSim >= 70
+    high_matches  = [m for m in all_matches if float(m.get('imgSim', 0)) >= 70 or float(m.get('textSim', 0)) >= 70]
+    other_matches = [m for m in all_matches if float(m.get('imgSim', 0)) < 70 and float(m.get('textSim', 0)) < 70]
 
     buffer = io.BytesIO()
-    doc    = SimpleDocTemplate(buffer, pagesize=A4)
+    # Reduced margins slightly to ensure the side-by-side table fits easily
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
     styles = getSampleStyleSheet()
 
-    high_heading = ParagraphStyle(
-        'HighHeading',
-        parent=styles['Heading2'],
-        fontSize=13,
-        spaceAfter=8,
-        spaceBefore=16,
-        textColor=colors.HexColor('#c0392b'),
-    )
-    other_heading = ParagraphStyle(
-        'OtherHeading',
-        parent=styles['Heading2'],
-        fontSize=13,
-        spaceAfter=8,
-        spaceBefore=16,
-        textColor=colors.HexColor('#2471a3'),
-    )
+    # --- Custom Styles ---
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=20, alignment=1, spaceAfter=20)
+    
+    high_heading = ParagraphStyle('HighHeading', parent=styles['Heading2'], fontSize=14, textColor=colors.black, spaceBefore=15, spaceAfter=10)
+    low_heading = ParagraphStyle('LowHeading', parent=styles['Heading2'], fontSize=14, textColor=colors.black, spaceBefore=15, spaceAfter=10)
 
     elements = []
 
-    # Title
-    elements.append(Paragraph("Trademark Analysis Report", styles['Title']))
-    elements.append(Spacer(1, 12))
+    # 1. Title
+    elements.append(Paragraph("Trademark Analysis Report", title_style))
 
-    # Query logo
-    if logo_bytes:
-        img_data   = io.BytesIO(logo_bytes)
-        img        = RLImage(img_data, width=150, height=150)
-        logo_table = Table([[img]], colWidths=[500])
-        logo_table.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER')]))
-        elements.append(logo_table)
-
-    elements.append(Spacer(1, 20))
-
-    # Query metadata table
-    table_data = [
-        [Paragraph("<b>Trademark Name:</b>",   styles['Normal']), Paragraph(str(data.get('label', '')),      styles['Normal'])],
-        [Paragraph("<b>Serial Number:</b>",    styles['Normal']), Paragraph(str(data.get('serial', '')),     styles['Normal'])],
-        [Paragraph("<b>Class:</b>",            styles['Normal']), Paragraph(str(data.get('modalClass', '')), styles['Normal'])],
-        [Paragraph("<b>Agent:</b>",            styles['Normal']), Paragraph(str(data.get('modalAgent', '')), styles['Normal'])],
-        [Paragraph("<b>Image Similarity:</b>", styles['Normal']), Paragraph(f"{data.get('imgSim')}%",        styles['Normal'])],
-        [Paragraph("<b>Text Similarity:</b>",  styles['Normal']), Paragraph(f"{data.get('textSim')}%",       styles['Normal'])],
+    # 2. Top Section: Logo (Left) and Metadata (Right)
+    
+    # Metadata rows
+    metadata_data = [
+        [Paragraph("<b>Trademark Name:</b>", styles['Normal']), Paragraph(str(data.get('label', '')), styles['Normal'])],
+        [Paragraph("<b>Serial Number:</b>", styles['Normal']), Paragraph(str(data.get('serial', '')), styles['Normal'])],
+        [Paragraph("<b>Class:</b>", styles['Normal']), Paragraph(str(data.get('modalClass', '')), styles['Normal'])],
+        [Paragraph("<b>Agent:</b>", styles['Normal']), Paragraph(str(data.get('modalAgent', '')), styles['Normal'])],
+        [Paragraph("<b>Image Similarity:</b>", styles['Normal']), Paragraph(f"{data.get('imgSim')}%", styles['Normal'])],
+        [Paragraph("<b>Text Similarity:</b>", styles['Normal']), Paragraph(f"{data.get('textSim')}%", styles['Normal'])],
     ]
-    t = Table(table_data, colWidths=[120, 350])
-    t.setStyle(TableStyle([
-        ('GRID',    (0, 0), (-1, -1), 0.5, colors.grey),
-        ('PADDING', (0, 0), (-1, -1), 6),
-        ('VALIGN',  (0, 0), (-1, -1), 'TOP'),
+    
+    meta_table = Table(metadata_data, colWidths=[120, 210])
+    meta_table.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('PADDING', (0, 0), (-1, -1), 5),
     ]))
-    elements.append(t)
+
+    # Source Image
+    if logo_bytes:
+        img_data = io.BytesIO(logo_bytes)
+        source_img = RLImage(img_data, width=160, height=160)
+    else:
+        source_img = Paragraph("No Logo", styles['Normal'])
+
+    # THE CONTAINER TABLE: This forces the side-by-side layout
+    # Widths: Image(170) + Gap(10) + Table(330) = 510 total (Fits A4)
+    container_data = [[source_img, meta_table]]
+    container_table = Table(container_data, colWidths=[170, 340])
+    container_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('ALIGN', (0, 0), (0, 0), 'LEFT'),   # Align image left
+        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),  # Align table right
+    ]))
+    
+    elements.append(container_table)
     elements.append(Spacer(1, 20))
 
-    # Description
+    # 3. Description
     elements.append(Paragraph("<b>Description:</b>", styles['Heading3']))
     elements.append(Paragraph(data.get('description', 'N/A'), styles['Normal']))
-    elements.append(Spacer(1, 25))
+    elements.append(Spacer(1, 20))
 
-    # Helper: render a single match row
+    # Match Row Helper
     def render_match_row(match):
-        # Try trademarks table first, fall back to client_trademarks
         match_logo = db.get_logo(match["id"]) or db.get_client_logo(match["id"])
         row = []
-
         if match_logo:
             img_data = io.BytesIO(match_logo)
-            img      = RLImage(img_data, width=60, height=60)
-            img._restrictSize(60, 60)
+            img = RLImage(img_data, width=65, height=65)
             row.append(img)
         else:
-            row.append(Paragraph("<i>No Image</i>", styles['Normal']))
+            row.append(Paragraph("No Image", styles['Normal']))
 
         info_text = (
             f"<b>{match.get('label', '')}</b><br/>"
             f"Serial: {match.get('serial', '')}<br/>"
-            f"Similarity: {match.get('totalSim', '')}%<br/>"
-            f"Image: {match.get('imgSim', '')}% &nbsp;|&nbsp; Text: {match.get('textSim', '')}%"
+            f"Image Similarity: {match.get('imgSim', '')}%<br/>"
+            f"Text Similarity: {match.get('textSim', '')}%"
         )
         row.append(Paragraph(info_text, styles['Normal']))
 
-        match_table = Table([row], colWidths=[80, 390])
-        match_table.setStyle(TableStyle([
-            ('GRID',    (0, 0), (-1, -1), 0.5, colors.grey),
-            ('VALIGN',  (0, 0), (-1, -1), 'MIDDLE'),
-            ('PADDING', (0, 0), (-1, -1), 6),
+        t = Table([row], colWidths=[80, 430])
+        t.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (1, 0), (1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+            ('TOPPADDING', (0, 0), (-1, -1), 10),
         ]))
-        return match_table
+        return t
 
-    def render_rule(hex_color):
-        rule = Table([['']], colWidths=[470])
-        rule.setStyle(TableStyle([
-            ('LINEBELOW',     (0, 0), (-1, -1), 1.5, colors.HexColor(hex_color)),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ]))
-        return rule
-
-    # High similarity section (>= 70%)
-    elements.append(Paragraph("⚠ High Similarity Matches (70% and above)", high_heading))
-    elements.append(render_rule('#c0392b'))
-    elements.append(Spacer(1, 6))
-
+    # 4. Results Sections
+    elements.append(Paragraph("High-Similarity Results (≥70%)", high_heading))
     if high_matches:
-        for match in high_matches:
-            elements.append(render_match_row(match))
-            elements.append(Spacer(1, 8))
+        for m in high_matches:
+            elements.append(render_match_row(m))
+            elements.append(Spacer(1, 10))
     else:
         elements.append(Paragraph("No high similarity matches found.", styles['Normal']))
 
-    elements.append(Spacer(1, 20))
-
-    # Other similarity section (30 - 69%)
-    elements.append(Paragraph("Other Similar Matches (30% – 69%)", other_heading))
-    elements.append(render_rule('#2471a3'))
-    elements.append(Spacer(1, 6))
-
+    elements.append(Spacer(1, 15))
+    elements.append(Paragraph("Low-Similarity Results (<70%)", low_heading))
     if other_matches:
-        for match in other_matches:
-            elements.append(render_match_row(match))
-            elements.append(Spacer(1, 8))
-    else:
-        elements.append(Paragraph("No other similar matches found.", styles['Normal']))
+        for m in other_matches:
+            elements.append(render_match_row(m))
+            elements.append(Spacer(1, 10))
 
     doc.build(elements)
     buffer.seek(0)
 
     label_clean = re.sub(r'[\\/*?:"<>|]', '', data.get('label', 'unknown')).strip()
-    filename = f"Report_{label_clean}.pdf"
-    return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
+    return send_file(buffer, as_attachment=True, download_name=f"Report_{label_clean}.pdf", mimetype='application/pdf')
+# @app.route('/api/generate_pdf', methods=['POST'])
+# def generate_pdf():
+#     data         = request.get_json()
+#     trademark_id = data.get('id')
+#     is_client    = data.get('isClient', False)
+
+#     # Use allMatches (full list for PDF) if provided, fall back to topMatches (UI top 3)
+#     all_matches = data.get("allMatches") or data.get("topMatches", [])
+
+#     if is_client:
+#         logo_bytes = db.get_client_logo(trademark_id)
+#     else:
+#         logo_bytes = db.get_logo(trademark_id)
+
+#     # Split into two tiers
+#     high_matches  = [m for m in all_matches if float(m.get('totalSim', 0)) >= 70]
+#     other_matches = [m for m in all_matches if 30 <= float(m.get('totalSim', 0)) < 70]
+
+#     buffer = io.BytesIO()
+#     doc    = SimpleDocTemplate(buffer, pagesize=A4)
+#     styles = getSampleStyleSheet()
+
+#     high_heading = ParagraphStyle(
+#         'HighHeading',
+#         parent=styles['Heading2'],
+#         fontSize=13,
+#         spaceAfter=8,
+#         spaceBefore=16,
+#         textColor=colors.HexColor('#c0392b'),
+#     )
+#     other_heading = ParagraphStyle(
+#         'OtherHeading',
+#         parent=styles['Heading2'],
+#         fontSize=13,
+#         spaceAfter=8,
+#         spaceBefore=16,
+#         textColor=colors.HexColor('#2471a3'),
+#     )
+
+#     elements = []
+
+#     # Title
+#     elements.append(Paragraph("Trademark Analysis Report", styles['Title']))
+#     elements.append(Spacer(1, 12))
+
+#     # Query logo
+#     if logo_bytes:
+#         img_data   = io.BytesIO(logo_bytes)
+#         img        = RLImage(img_data, width=150, height=150)
+#         logo_table = Table([[img]], colWidths=[500])
+#         logo_table.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER')]))
+#         elements.append(logo_table)
+
+#     elements.append(Spacer(1, 20))
+
+#     # Query metadata table
+#     table_data = [
+#         [Paragraph("<b>Trademark Name:</b>",   styles['Normal']), Paragraph(str(data.get('label', '')),      styles['Normal'])],
+#         [Paragraph("<b>Serial Number:</b>",    styles['Normal']), Paragraph(str(data.get('serial', '')),     styles['Normal'])],
+#         [Paragraph("<b>Class:</b>",            styles['Normal']), Paragraph(str(data.get('modalClass', '')), styles['Normal'])],
+#         [Paragraph("<b>Agent:</b>",            styles['Normal']), Paragraph(str(data.get('modalAgent', '')), styles['Normal'])],
+#         [Paragraph("<b>Image Similarity:</b>", styles['Normal']), Paragraph(f"{data.get('imgSim')}%",        styles['Normal'])],
+#         [Paragraph("<b>Text Similarity:</b>",  styles['Normal']), Paragraph(f"{data.get('textSim')}%",       styles['Normal'])],
+#     ]
+#     t = Table(table_data, colWidths=[120, 350])
+#     t.setStyle(TableStyle([
+#         ('GRID',    (0, 0), (-1, -1), 0.5, colors.grey),
+#         ('PADDING', (0, 0), (-1, -1), 6),
+#         ('VALIGN',  (0, 0), (-1, -1), 'TOP'),
+#     ]))
+#     elements.append(t)
+#     elements.append(Spacer(1, 20))
+
+#     # Description
+#     elements.append(Paragraph("<b>Description:</b>", styles['Heading3']))
+#     elements.append(Paragraph(data.get('description', 'N/A'), styles['Normal']))
+#     elements.append(Spacer(1, 25))
+
+#     # Helper: render a single match row
+#     def render_match_row(match):
+#         # Try trademarks table first, fall back to client_trademarks
+#         match_logo = db.get_logo(match["id"]) or db.get_client_logo(match["id"])
+#         row = []
+
+#         if match_logo:
+#             img_data = io.BytesIO(match_logo)
+#             img      = RLImage(img_data, width=60, height=60)
+#             img._restrictSize(60, 60)
+#             row.append(img)
+#         else:
+#             row.append(Paragraph("<i>No Image</i>", styles['Normal']))
+
+#         info_text = (
+#             f"<b>{match.get('label', '')}</b><br/>"
+#             f"Serial: {match.get('serial', '')}<br/>"
+#             f"Similarity: {match.get('totalSim', '')}%<br/>"
+#             f"Image: {match.get('imgSim', '')}% &nbsp;|&nbsp; Text: {match.get('textSim', '')}%"
+#         )
+#         row.append(Paragraph(info_text, styles['Normal']))
+
+#         match_table = Table([row], colWidths=[80, 390])
+#         match_table.setStyle(TableStyle([
+#             ('GRID',    (0, 0), (-1, -1), 0.5, colors.grey),
+#             ('VALIGN',  (0, 0), (-1, -1), 'MIDDLE'),
+#             ('PADDING', (0, 0), (-1, -1), 6),
+#         ]))
+#         return match_table
+
+#     def render_rule(hex_color):
+#         rule = Table([['']], colWidths=[470])
+#         rule.setStyle(TableStyle([
+#             ('LINEBELOW',     (0, 0), (-1, -1), 1.5, colors.HexColor(hex_color)),
+#             ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+#         ]))
+#         return rule
+
+#     # High similarity section (>= 70%)
+#     elements.append(Paragraph("⚠ High Similarity Matches (70% and above)", high_heading))
+#     elements.append(render_rule('#c0392b'))
+#     elements.append(Spacer(1, 6))
+
+#     if high_matches:
+#         for match in high_matches:
+#             elements.append(render_match_row(match))
+#             elements.append(Spacer(1, 8))
+#     else:
+#         elements.append(Paragraph("No high similarity matches found.", styles['Normal']))
+
+#     elements.append(Spacer(1, 20))
+
+#     # Other similarity section (30 - 69%)
+#     elements.append(Paragraph("Other Similar Matches (30% – 69%)", other_heading))
+#     elements.append(render_rule('#2471a3'))
+#     elements.append(Spacer(1, 6))
+
+#     if other_matches:
+#         for match in other_matches:
+#             elements.append(render_match_row(match))
+#             elements.append(Spacer(1, 8))
+#     else:
+#         elements.append(Paragraph("No other similar matches found.", styles['Normal']))
+
+#     doc.build(elements)
+#     buffer.seek(0)
+
+#     label_clean = re.sub(r'[\\/*?:"<>|]', '', data.get('label', 'unknown')).strip()
+#     filename = f"Report_{label_clean}.pdf"
+#     return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
 
 # ===============================================================================================
 # IMAGE SERVING (LOGOS & LEGAL EVIDENCE)
@@ -1122,4 +1249,3 @@ if __name__ == '__main__':
     print(f"Starting Flask on {host}:{port}")
 
     app.run(host=host, port=port, debug=True)
-    
