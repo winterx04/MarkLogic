@@ -2,7 +2,7 @@
 import shutil
 import os
 
-def export_best(run_dir="runs/detect/train9", dest="models/logo_detector1.pt"):
+def export_best(run_dir="runs/detect/train13", dest="models/best_t13.pt"):
     src = os.path.join(run_dir, "weights", "best.pt")
     if not os.path.exists(src):
         raise FileNotFoundError(src)
