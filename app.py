@@ -14,7 +14,7 @@ import traceback
 import re
 import database as db 
 from ml_utils import MLModel
-from pdf_extractor import UltraRobustExtractor, extract_all 
+from pdf_extractor_backup06042026 import UltraRobustExtractor, extract_all 
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
