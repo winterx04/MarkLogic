@@ -1,5 +1,6 @@
-/models/
 /dataset/
 __pycache__/
 /.vscode/
+.env
+/final_dataset/
 .env

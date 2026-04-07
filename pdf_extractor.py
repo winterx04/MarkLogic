@@ -157,7 +157,7 @@ class MLModel:
 # UltraRobustExtractor
 # -------------------------
 class UltraRobustExtractor:
-    def __init__(self, debug=False,yolo_model_path="models/best_t8.pt"):
+    def __init__(self, debug=False,yolo_model_path="models/best_t13.pt"):
         self.debug = debug
         self.ml = None
 
@@ -282,28 +282,46 @@ class UltraRobustExtractor:
             self.log(f"Heuristic extraction failed: {e}")
             return None
         
+    # Class IDs matching logo_dataset.yaml
+    LOGO_CLASS_IDS = {0, 1}  # 0=logo, 1=text_logo
+
     def extract_logo_yolo(self, page, block_bbox):
             if not self.yolo: return None
             try:
-                # We crop a slightly larger area to give YOLO context
                 img_obj = page.within_bbox(block_bbox).to_image(resolution=300)
-                img = img_obj.original.convert("RGB")
-                results = self.yolo(img, verbose=False, conf=0.25) # Lower confidence to be safe
+                img     = img_obj.original.convert("RGB")
+                img_w, img_h = img.size
+                results = self.yolo(img, verbose=False, conf=0.15)
 
                 if not results or len(results[0].boxes) == 0:
                     return None
 
-                # Pick the box with the largest area (usually the logo)
-                boxes = results[0].boxes.xyxy.cpu().numpy()
-                best_box = boxes[np.argmax([(b[2]-b[0])*(b[3]-b[1]) for b in boxes])]
-                
-                logo_crop = img.crop((best_box[0], best_box[1], best_box[2], best_box[3]))
-                
+                boxes    = results[0].boxes.xyxy.cpu().numpy()
+                cls_ids  = results[0].boxes.cls.cpu().numpy().astype(int)
+
+                # Filter: only keep logo (0) and text_logo (1) detections
+                logo_boxes = [
+                    b for b, c in zip(boxes, cls_ids)
+                    if c in self.LOGO_CLASS_IDS
+                ]
+
+                if not logo_boxes:
+                    return None
+
+                # Among logo/text_logo boxes, pick the largest
+                best_box = max(logo_boxes, key=lambda b: (b[2]-b[0]) * (b[3]-b[1]))
+
+                x0 = max(0,     int(best_box[0]))
+                y0 = max(0,     int(best_box[1]))
+                x1 = min(img_w, int(best_box[2]))
+                y1 = min(img_h, int(best_box[3]))
+
+                logo_crop = img.crop((x0, y0, x1, y1))
                 buf = io.BytesIO()
                 logo_crop.save(buf, format="PNG")
                 return self.remove_white_bg_make_transparent(buf.getvalue())
             except Exception as e:
-                self.log(f"YOLO failed: {e}")
+                self.log(f"YOLO extraction error: {e}")
                 return None
             
     # def extract_logo_yolo(self, page, block_bbox):
@@ -726,7 +744,7 @@ class UltraRobustExtractor:
 
         # fallback to heuristic method
         if not logo_data:
-            print(f"YOLO failed to find logo on page {page_num}, trying heuristic method...")
+            self.log(f"YOLO found no logo on page {page_num}, falling back to heuristic")
             logo_data = self.extract_logo_only(page, bbox)
         logo_emb = None
         if logo_data and self.ml:

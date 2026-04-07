@@ -313,13 +313,14 @@ function renderPDFMode(groups) {
             // Pass group.all_matches (up to 10) as third arg for PDF use
             row.onclick = () => openModal(m, group.matches, group.all_matches || group.matches);
             const imgSrc = getLogoUrl(m.id);
+            const bestSim = Math.max(m.imgSim ?? 0, m.textSim ?? 0);
             row.innerHTML = `
                 <div class="match-thumb"><img src="${imgSrc}"></div>
                 <div class="match-info">
                     <div class="match-name">${m.label}</div>
-                    <div class="match-meta">Score: ${m.totalSim}%</div>
+                    <div class="match-meta">Image: ${m.imgSim}% &nbsp;|&nbsp; Text: ${m.textSim}%</div>
                 </div>
-                <span class="score-pill ${m.totalSim >= 80 ? 'high' : 'mid'}">${m.totalSim}%</span>`;
+                <span class="score-pill ${bestSim >= 80 ? 'high' : 'mid'}">${bestSim}%</span>`;
             matchList.appendChild(row);
         });
 
@@ -368,7 +369,10 @@ function openModal(data, uiMatches = [], pdfMatches = []) {
                 <div style="font-weight: 600;">${m.label}</div>
                 <div style="font-size: 0.8rem;">${m.serial || ''}</div>
             </div>
-            <div style="font-weight: bold; color: #4f46e5;">${m.totalSim}%</div>`;
+            <div style="font-size: 0.75rem; text-align:right; color: #4f46e5; font-weight: bold;">
+                <div>Img: ${m.imgSim}%</div>
+                <div>Txt: ${m.textSim}%</div>
+            </div>`;
 
         item.onclick = () => openModal(m, uiMatches, pdfMatches);
         matchesList.appendChild(item);
