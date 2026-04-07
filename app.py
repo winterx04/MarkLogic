@@ -28,7 +28,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 print("Running script:", __file__, "CWD:", os.getcwd(), flush=True)
 load_dotenv()
-#load_dotenv()
+
 print("ENV LOADED:", os.getenv("FLASK_RUN_HOST"), os.getenv("FLASK_RUN_PORT"), flush=True)
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev_key_only_for_local_use')
@@ -44,6 +44,8 @@ app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS') == 'False'
 app.config['MAIL_USE_SSL'] = False
 app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
 #app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+
+
 
 # Setting the default sender as a tuple
 app.config['MAIL_DEFAULT_SENDER'] = (
