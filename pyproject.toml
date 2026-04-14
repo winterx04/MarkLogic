@@ -12,6 +12,7 @@ dependencies = [
     "ultralytics>=8.0.0",
     "torch",
     "torchvision",
+    "label-studio>=1.23.0",
 ]
 
 [[tool.uv.index]]

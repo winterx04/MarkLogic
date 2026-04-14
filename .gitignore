@@ -4,3 +4,4 @@
 /models/*.pt
 *.pyc
 .DS_Store
+.env
