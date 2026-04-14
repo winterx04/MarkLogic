@@ -12,6 +12,7 @@ dependencies = [
     "ultralytics>=8.0.0",
     "torch",
     "torchvision",
+    "pdf2image>=1.17.0",
     "label-studio>=1.23.0",
 ]
 
