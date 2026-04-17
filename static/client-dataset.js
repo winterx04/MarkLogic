@@ -320,13 +320,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadClientTable(query = "") {
         if (!tbody) return;
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:20px;">Loading…</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:20px;">Loading…</td></tr>`;
         try {
             const res  = await fetch(`/api/client-trademarks?q=${encodeURIComponent(query)}`);
             const data = await res.json();
             tbody.innerHTML = "";
             if (data.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:20px;">No records found.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:20px;">No records found.</td></tr>`;
                 return;
             }
             data.forEach(item => {
@@ -335,6 +335,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const checkTd = document.createElement("td");
                 checkTd.className = "table-checkbox-col";
                 checkTd.innerHTML = `<input type="checkbox" class="manage-checkbox" data-id="${item.id}">`;
+
+                const refTd = document.createElement("td");
+                refTd.textContent = item.file_name || "N/A";   // File Name as reference
 
                 const nameTd = document.createElement("td");
                 nameTd.textContent = item.applicant_name || "N/A";
