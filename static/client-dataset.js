@@ -348,6 +348,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 dateTd.textContent = item.upload_date || "N/A";
 
                 row.appendChild(checkTd);
+                row.appendChild(refTd);
                 row.appendChild(nameTd);
                 row.appendChild(descTd);
                 row.appendChild(dateTd);
