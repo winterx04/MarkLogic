@@ -54,3 +54,7 @@ DATABASE
 5. In General tab, It shows you "Custom or Tar" change it to "Plain"
 6. On Filename, when you click on it, above your "Open" button change the "BACKUP FILE.backup" to "All File"
 7. Once selected Marklogic database file, click "Restore".
+
+----------------------------------------------------------------------------------------------------------------------------------------------
+.ENV
+1. Please change the env to .env file as it contains database and SMTP link.
