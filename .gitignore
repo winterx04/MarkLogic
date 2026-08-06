@@ -4,3 +4,4 @@ __pycache__/
 .env
 /final_dataset/
 .env
+/eval/bootstrap_pairs.csv

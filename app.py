@@ -19,11 +19,10 @@ from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
-import imagehash
-from difflib import SequenceMatcher
 import os
 from dotenv import load_dotenv
 from pathlib import Path
+import similarity
 
 BASE_DIR = Path(__file__).resolve().parent
 print("Running script:", __file__, "CWD:", os.getcwd(), flush=True)
@@ -362,13 +361,18 @@ def upload_client_dataset():
                             emb = None
                             if tm.get('logo_data'):
                                 emb = ml_model.generate_image_embedding(io.BytesIO(tm['logo_data']))
-                            
+
+                            applicant_name = tm.get('applicant_name') or user_file_name
+                            description    = tm.get('description') or "Extracted from PDF"
+                            text_emb       = ml_model.generate_text_embedding(f"{applicant_name} {description}".strip())
+
                             db.insert_client_trademark({
                                 'file_name':      user_file_name,
                                 'logo_data':      tm.get('logo_data'),
                                 'logo_embedding': emb,
-                                'applicant_name': tm.get('applicant_name') or user_file_name,
-                                'description':    tm.get('description') or "Extracted from PDF",
+                                'text_embedding': text_emb,
+                                'applicant_name': applicant_name,
+                                'description':    description,
                                 'custom_date':    user_date
                             })
 
@@ -383,11 +387,13 @@ def upload_client_dataset():
                 yield json.dumps({"status": "extracting", "percentage": 50}) + "\n"
                 clean_logo = extract_logo_from_bytes(file_bytes)
                 emb        = ml_model.generate_image_embedding(io.BytesIO(clean_logo))
-                
+                text_emb   = ml_model.generate_text_embedding(f"{user_file_name} Manual Image Upload")
+
                 db.insert_client_trademark({
                     'file_name':      user_file_name,
                     'logo_data':      clean_logo,
                     'logo_embedding': emb,
+                    'text_embedding': text_emb,
                     'applicant_name': user_file_name,
                     'description':    "Manual Image Upload",
                     'custom_date':    user_date
@@ -614,7 +620,7 @@ def extract_logo_from_bytes(img_bytes, white_thresh=240):
         current_gap_start = 0
 
         for x in range(start_scan, end_scan):
-            if col_sums[x] == 0:
+            if col_sums[x]== 0:
                 if current_gap_len == 0:
                     current_gap_start = x
                 current_gap_len += 1
@@ -643,42 +649,6 @@ def extract_logo_from_bytes(img_bytes, white_thresh=240):
     except Exception as e:
         print(f"⚠️ AI Failed to Retrieve Logo (Fallback to Original Image): {e}")
         return img_bytes
-
-def normalize(text):
-    return re.sub(r'[^A-Z0-9]', '', text.upper())
-
-def phash_score_bytes(b1: bytes, b2: bytes) -> float:
-    try:
-        h1   = imagehash.phash(PILImage.open(io.BytesIO(b1)).convert('RGB'))
-        h2   = imagehash.phash(PILImage.open(io.BytesIO(b2)).convert('RGB'))
-        dist = (h1 - h2)
-        return max(0.0, 1.0 - dist / 64.0)
-    except Exception:
-        return 0.0
-
-def orb_match_score_bytes(b1: bytes, b2: bytes) -> float:
-    try:
-        a = cv2.imdecode(np.frombuffer(b1, np.uint8), cv2.IMREAD_GRAYSCALE)
-        b = cv2.imdecode(np.frombuffer(b2, np.uint8), cv2.IMREAD_GRAYSCALE)
-        if a is None or b is None: return 0.0
-
-        orb    = cv2.ORB_create(500)
-        k1, d1 = orb.detectAndCompute(a, None)
-        k2, d2 = orb.detectAndCompute(b, None)
-        if d1 is None or d2 is None: return 0.0
-
-        bf      = cv2.BFMatcher(cv2.NORM_HAMMING)
-        matches = bf.knnMatch(d1, d2, k=2)
-        good    = 0
-        for m_n in matches:
-            if len(m_n) < 2: continue
-            m, n = m_n
-            if m.distance < 0.75 * n.distance:
-                good += 1
-        denom = max(1, min(len(k1), len(k2)))
-        return float(good) / denom
-    except Exception:
-        return 0.0
 
 def orb_similarity(img_bytes1, img_bytes2):
     try:
@@ -711,15 +681,6 @@ def edge_similarity(img_bytes1, img_bytes2):
         return max(sim, 0)
     except:
         return 0.0
-
-def seq_ratio(a: str, b: str) -> float:
-    return SequenceMatcher(None, (a or "").lower(), (b or "").lower()).ratio()
-
-def jaccard_tokens(a: str, b: str) -> float:
-    sa = set((a or "").lower().split())
-    sb = set((b or "").lower().split())
-    if not sa and not sb: return 0.0
-    return len(sa & sb) / len(sa | sb)
 
 # ===============================================================================================
 # COMPARISON API
@@ -761,8 +722,8 @@ def perform_comparison():
     faiss.normalize_L2(db_logo_vectors)
     faiss.normalize_L2(db_text_vectors)
 
-    image_index = faiss.IndexFlatIP(512)
-    text_index  = faiss.IndexFlatIP(384)
+    image_index = faiss.IndexFlatIP(similarity.IMAGE_EMBEDDING_DIM)
+    text_index  = faiss.IndexFlatIP(similarity.TEXT_EMBEDDING_DIM)
     image_index.add(db_logo_vectors)
     text_index.add(db_text_vectors)
 
@@ -852,7 +813,7 @@ def perform_comparison():
             q.get('serial_number') or
             ""
         ).strip()
-        q_name = normalize(q_name_raw)
+        q_name = similarity.normalize(q_name_raw)
 
         q_logo    = q.get('logo_data')
         q_has_img = False
@@ -880,50 +841,28 @@ def perform_comparison():
             if not row: continue
             if not q_name and not q_has_img: continue
 
-            db_name = normalize(row['trademark_name'] or "")
-            t_ai    = t_sim_map.get(db_id, 0.0)
-            l_ai    = l_sim_map.get(db_id, 0.0)
+            t_ai = t_sim_map.get(db_id, 0.0)
+            l_ai = l_sim_map.get(db_id, 0.0)
 
             if q_has_img:
-                if t_ai < 0.3 and l_ai < 0.3: continue
+                if t_ai < similarity.CANDIDATE_FLOOR and l_ai < similarity.CANDIDATE_FLOOR: continue
             else:
-                if t_ai < 0.3: continue
+                if t_ai < similarity.CANDIDATE_FLOOR: continue
 
-            if not q_name or not db_name:
-                literal = 0.0
-            elif q_name == db_name:
-                literal = 1.0
-            elif q_name in db_name or db_name in q_name:
-                literal = 0.85
-            else:
-                literal = 0.0
-
-            fuzzy          = seq_ratio(q_name, db_name) if (q_name and db_name) else 0.0
-            text_sim_final = max(literal, t_ai * 0.9, fuzzy * 0.95)
-
-            pixel_sim     = phash_score_bytes(q_logo, row['logo_data']) if (q_has_img and row['logo_data']) else 0.0
-            img_sim_final = l_ai * 0.4 if (pixel_sim < 0.25 and l_ai > 0.70) else max(l_ai, pixel_sim)
-            if img_sim_final > 0.92:
-                img_sim_final = 1.0
-
-            # Determine threshold for inclusion based on available signals
-            if q_has_img and q_name:
-                threshold = 0.35
-            elif q_has_img:
-                threshold = 0.45
-            elif q_name:
-                threshold = 0.35
-            else:
-                threshold = 1.0
+            result = similarity.score_match(
+                q_name_raw, row['trademark_name'] or "",
+                q_logo, row['logo_data'],
+                t_ai, l_ai, q_has_img
+            )
 
             # A match is included if EITHER score meets the threshold
-            if img_sim_final >= threshold or text_sim_final >= threshold:
+            if result['include']:
                 match_list.append({
                     'id':          db_id,
                     'serial':      row['serial_number'],
                     'label':       row['trademark_name'] or row['applicant_name'],
-                    'textSim':     round(text_sim_final * 100, 2),
-                    'imgSim':      round(img_sim_final  * 100, 2),
+                    'textSim':     round(result['text_sim'] * 100, 2),
+                    'imgSim':      round(result['img_sim']  * 100, 2),
                     'description': row['description'],
                     'modalClass':  row['class_indices'],
                     'modalAgent':  row['agent_details']

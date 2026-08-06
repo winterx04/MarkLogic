@@ -5,6 +5,8 @@ import psycopg2.extras
 import numpy as np
 from dotenv import load_dotenv
 
+import similarity
+
 # Get .env
 load_dotenv()
 
@@ -73,11 +75,14 @@ def init_db():
             file_name TEXT,
             logo_data BYTEA,
             logo_embedding BYTEA,
+            text_embedding BYTEA,
             applicant_name TEXT,
             description TEXT,
             upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
+    # Migrates existing installs (CREATE TABLE IF NOT EXISTS above is a no-op for them)
+    cur.execute("ALTER TABLE client_trademarks ADD COLUMN IF NOT EXISTS text_embedding BYTEA;")
     conn.commit()
     cur.close(); conn.close()
     
@@ -184,15 +189,17 @@ def insert_client_trademark(data):
     conn = get_db_connection()
     cur = conn.cursor()
     logo_emb = data['logo_embedding'].tobytes() if data.get('logo_embedding') is not None else None
+    text_emb = data['text_embedding'].tobytes() if data.get('text_embedding') is not None else None
     try:
         cur.execute("""
-            INSERT INTO client_trademarks 
-            (file_name, logo_data, logo_embedding, applicant_name, description, upload_date)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO client_trademarks
+            (file_name, logo_data, logo_embedding, text_embedding, applicant_name, description, upload_date)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (
             data.get('file_name'),
             psycopg2.Binary(data.get('logo_data')) if data.get('logo_data') else None,
             logo_emb,
+            text_emb,
             data.get('applicant_name'),
             data.get('description'),
             data.get('custom_date') # This maps to the date the user selected
@@ -230,17 +237,21 @@ def get_all_client_embeddings():
     """Fetches embeddings specifically from the client table for FAISS."""
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, logo_embedding FROM client_trademarks WHERE logo_embedding IS NOT NULL")
+    cur.execute("SELECT id, logo_embedding, text_embedding FROM client_trademarks WHERE logo_embedding IS NOT NULL")
     rows = cur.fetchall()
     cur.close(); conn.close()
 
-    db_data = {'logo': [], 'ids': [], 'text': []} # Text is empty for client usually
+    db_data = {'logo': [], 'ids': [], 'text': []}
     for row in rows:
-        db_id, logo_bytes = row
+        db_id, logo_bytes, text_bytes = row
         db_data['ids'].append(db_id)
         db_data['logo'].append(np.frombuffer(logo_bytes, dtype=np.float32))
-        # Provide dummy text embedding to keep FAISS index logic consistent
-        db_data['text'].append(np.zeros(384, dtype=np.float32)) 
+        # Legacy rows uploaded before text_embedding existed fall back to a
+        # dummy zero vector (contributes 0 similarity, same as before this fix).
+        if text_bytes:
+            db_data['text'].append(np.frombuffer(text_bytes, dtype=np.float32))
+        else:
+            db_data['text'].append(np.zeros(similarity.TEXT_EMBEDDING_DIM, dtype=np.float32))
     return db_data
 
 def insert_trademark(data):
@@ -362,7 +373,7 @@ def get_all_embeddings(category=None):
         if logo_bytes:
             db_data['logo'].append(np.frombuffer(logo_bytes, dtype=np.float32))
         else:
-            db_data['logo'].append(np.zeros(512, dtype=np.float32))
+            db_data['logo'].append(np.zeros(similarity.IMAGE_EMBEDDING_DIM, dtype=np.float32))
     return db_data
 
 def delete_trademark_by_id(trademark_id):
