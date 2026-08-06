@@ -6,7 +6,7 @@ import numpy as np
 from tqdm import tqdm
 
 # Added 'prefix' parameter to the function
-def convert(pdf_path, out_dir, dpi=300, start_page=1, prefix="page"): 
+def convert(pdf_path, out_dir, dpi=300, start_page=1, end_page=None, prefix="page"): 
     os.makedirs(out_dir, exist_ok=True)
     
     poppler_path = r"C:\\poppler-25.12.0\\Library\\bin"
@@ -18,10 +18,16 @@ def convert(pdf_path, out_dir, dpi=300, start_page=1, prefix="page"):
         print(f"Error: Start page ({start_page}) is greater than total pages ({total_pages})")
         return 0
 
-    print(f"Total pages in PDF: {total_pages}")
-    print(f"Processing from page {start_page} to {total_pages}...")
+    if end_page is None:
+        end_page = total_pages
+    elif end_page > total_pages:
+        print(f"Error: End page ({end_page}) is greater than total pages ({total_pages})")
+        return 0
 
-    for i in tqdm(range(start_page, total_pages + 1), desc="Converting PDF", unit="page"):
+    print(f"Total pages in PDF: {total_pages}")
+    print(f"Processing from page {start_page} to {end_page}...")
+
+    for i in tqdm(range(start_page, end_page + 1), desc="Converting PDF", unit="page"):
         try:
             pages = convert_from_path(
                 pdf_path, 
@@ -46,7 +52,7 @@ def convert(pdf_path, out_dir, dpi=300, start_page=1, prefix="page"):
         except Exception as e:
             print(f"\nError on page {i}: {e}")
 
-    return (total_pages - start_page + 1)
+    return (end_page - start_page + 1)
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
@@ -54,13 +60,14 @@ if __name__ == "__main__":
     p.add_argument("--out", default="dataset/images/all")
     p.add_argument("--dpi", type=int, default=300)
     p.add_argument("--start", type=int, default=1, help="Page number to start from")
-    
+    p.add_argument("--end", type=int, default=None, help="Page number to end at (optional)")
+
     # --- NEW ARGUMENT FOR PREFIX ---
     p.add_argument("--prefix", default="journal", help="Filename prefix (e.g. journal_2024_05)")
     
     args = p.parse_args()
     
     # Pass the prefix to the convert function
-    n = convert(args.pdf, args.out, dpi=args.dpi, start_page=args.start, prefix=args.prefix)
+    n = convert(args.pdf, args.out, dpi=args.dpi, start_page=args.start, end_page=args.end, prefix=args.prefix)
     print(f"\n--- Process Complete ---")
     print(f"Successfully converted {n} pages to: {args.out}")

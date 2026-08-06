@@ -14,11 +14,14 @@ def main():
     # 2. Load base model (fresh start — new 9-class dataset is different from old logo-only model)
     # yolov8s = small, good balance for 4GB VRAM + 9 classes
     # Switch to yolov8n.pt if you get CUDA out of memory errors
-    model = YOLO("yolov8s.pt")
+    model = YOLO("yolov8s.pt")  # Starting Fresh Train
+    #model = YOLO(r"runs\\detect\\train-2\\weights\\best.pt")  # ← update if needed currently train-2 best.pt is best
 
     # 3. Training
     model.train(
-        data=r"C:\\Users\\xxin5\\MarkLogic\\final_dataset\\logo_dataset.yaml",
+        name="train-3",
+        exist_ok=True,
+        data=r"C:\\Users\\xian.xin\\MarkLogic\\final_dataset\\logo_dataset.yaml",
 
         epochs=150,         # More epochs since dataset is small (48 images)
                             # Early stopping will kick in before 100 if model converges
@@ -36,8 +39,9 @@ def main():
         # ACCURACY TUNING:
         patience=30,        # Increased from 10 — gives model more time to improve on small dataset
         val=True,
-        lr0=0.01,           # Reset to default — starting fresh so no need for low LR
+        #lr0=0.01,           # Reset to default — starting fresh so no need for low LR
         warmup_epochs=5,    # Gentle warmup since dataset is small
+        optimizer="auto",   
 
         # DATA AUGMENTATION (critical for small datasets):
         augment=True,

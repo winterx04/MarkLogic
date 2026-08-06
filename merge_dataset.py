@@ -214,6 +214,19 @@ def merge(new_export_zip, dataset_dir, val_ratio, seed):
             if os.path.exists(img_path) and os.path.exists(lbl_path):
                 all_entries.append((stem, img_path, lbl_path, fname))
 
+    # Back every entry with a persistent copy in images/all + labels/all,
+    # since we're about to delete the train/ and val/ folders below.
+    normalized_entries = []
+    for stem, img_path, lbl_path, fname in all_entries:
+        all_img_path = os.path.join(all_img_dir, fname)
+        all_lbl_path = os.path.join(all_lbl_dir, stem + ".txt")
+        if not os.path.exists(all_img_path):
+            shutil.copy(img_path, all_img_path)
+        if not os.path.exists(all_lbl_path):
+            shutil.copy(lbl_path, all_lbl_path)
+        normalized_entries.append((stem, all_img_path, all_lbl_path, fname))
+    all_entries = normalized_entries
+
     # Shuffle and split
     random.seed(seed)
     random.shuffle(all_entries)
