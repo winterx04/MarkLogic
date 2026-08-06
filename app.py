@@ -528,16 +528,34 @@ def api_delete_trademarks():
     if not isinstance(ids, list) or not ids:
         return jsonify({'success': False, 'message': 'Provide ids list in JSON body.'}), 400
 
-    deleted = 0
-    errors  = []
-    for tid in ids:
-        try:
-            db.delete_trademark_by_id(tid)
-            deleted += 1
-        except Exception as e:
-            errors.append({'id': tid, 'error': str(e)})
+    def generate():
+        deleted = 0
+        errors  = []
+        total   = len(ids)
+        for idx, tid in enumerate(ids):
+            try:
+                db.delete_trademark_by_id(tid)
+                deleted += 1
+            except Exception as e:
+                errors.append({'id': tid, 'error': str(e)})
 
-    return jsonify({'success': True, 'deleted': deleted, 'errors': errors})
+            percentage = int(((idx + 1) / total) * 100)
+            yield json.dumps({
+                "status":     "deleting",
+                "percentage": percentage,
+                "current":    idx + 1,
+                "total":      total
+            }) + "\n"
+
+        yield json.dumps({
+            "status":  "complete",
+            "success": True,
+            "deleted": deleted,
+            "errors":  errors,
+            "message": f"Deleted {deleted} of {total} record(s)."
+        }) + "\n"
+
+    return Response(generate(), mimetype='application/x-ndjson')
 
 # ===============================================================================================
 # SEARCH & TEXT/IMAGE SEARCH
@@ -582,16 +600,19 @@ def api_image_search():
     if not similar_ids:
         return jsonify([])
 
-    match_ids = [similar_ids[i] for i, d in enumerate(distances) if d <= 0.10]
-    if not match_ids:
-        return jsonify([])
+    # Always surface the best-effort ranked candidates as suggestions rather
+    # than an all-or-nothing cutoff — a slightly resized/cropped screenshot of
+    # a real match can legitimately score below a strict similarity bar.
+    match_score_by_id = {rid: round((1.0 - d) * 100, 1) for rid, d in zip(similar_ids, distances)}
 
-    results        = db.search_trademarks(words=words, class_filter=class_filter, id_list=match_ids)
+    results        = db.search_trademarks(words=words, class_filter=class_filter, id_list=similar_ids)
     results_dict   = {row['id']: dict(row) for row in results}
     sorted_results = []
-    for rid in match_ids:
+    for rid in similar_ids:
         if rid in results_dict:
-            sorted_results.append(results_dict[rid])
+            row = results_dict[rid]
+            row['match_score'] = match_score_by_id.get(rid)
+            sorted_results.append(row)
 
     return jsonify(sorted_results)
 

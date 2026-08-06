@@ -143,6 +143,23 @@
         </div>
     </div>
 
+    <!-- Delete Progress Dialog -->
+    <div class="dataset-modal-overlay" id="deleteProgressOverlay">
+        <div class="dataset-modal-box">
+            <h2 class="dataset-modal-title">Deleting Records</h2>
+            <p class="dataset-modal-subtitle" id="deleteProgressSubtitle">Please wait while the selected records are removed.</p>
+            <div id="deleteProgressContainer">
+                <div class="progress-info-row">
+                    <span id="deleteProgressText">Preparing...</span>
+                    <span id="deleteProgressPercent">0%</span>
+                </div>
+                <div id="deleteProgressBarWrapper">
+                    <div id="deleteProgressBar"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('static', filename='dataset.js') }}"></script>
 </body>
 </html>

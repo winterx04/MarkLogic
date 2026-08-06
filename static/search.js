@@ -92,10 +92,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         trademarks.forEach(trademark => {
-            // 1. Trademark Logo Cell
+            // 1. Trademark Logo Cell (image-search results carry a match_score suggestion badge)
+            const matchBadge = (trademark.match_score !== undefined && trademark.match_score !== null)
+                ? `<span class="match-score-badge">${trademark.match_score}%</span>`
+                : '';
             const logoHtml = trademark.has_logo
-                ? `<div class="trademark-image"><img src="/logo/${trademark.id}" alt="Logo"></div>`
-                : `<div class="trademark-image no-logo"><span>No Logo</span></div>`;
+                ? `<div class="trademark-image">${matchBadge}<img src="/logo/${trademark.id}" alt="Logo"></div>`
+                : `<div class="trademark-image no-logo">${matchBadge}<span>No Logo</span></div>`;
 
             // 2. Build the 6-column row
             const rowHtml = `

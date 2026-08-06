@@ -157,7 +157,7 @@ class MLModel:
 # UltraRobustExtractor
 # -------------------------
 class UltraRobustExtractor:
-    def __init__(self, debug=False,yolo_model_path="models/best_t13.pt"):
+    def __init__(self, debug=False,yolo_model_path="models/best_t-2.pt"):
         self.debug = debug
         self.ml = None
 
@@ -570,7 +570,11 @@ class UltraRobustExtractor:
 
         agent_idx = len(lines)
         for i, line in enumerate(lines):
-            if "AGENT" in line.upper():
+            # startswith, not a bare substring check — goods descriptions
+            # routinely contain words like "agents" (bleaching agents,
+            # chelating agents, ...) which a substring match would wrongly
+            # treat as the "AGENT :" section header.
+            if line.strip().upper().startswith("AGENT"):
                 fields["agent_details"] = " ".join(lines[i:]).replace("AGENT :", "").replace("AGENT:", "").strip()
                 agent_idx = i
                 break
@@ -675,6 +679,24 @@ class UltraRobustExtractor:
     # =====================================================
     # BLOCK DETECTION
     # =====================================================
+    # Width of the thin rule this journal draws directly before/after each
+    # entry — distinct from the wider page header/footer border rules.
+    ENTRY_SEPARATOR_WIDTH_RANGE = (340, 400)
+
+    def _entry_separator_ys(self, page):
+        """Y-positions of the thin per-entry separator lines on this page."""
+        by_y = {}
+        for r in page.rects:
+            if r["bottom"] - r["top"] < 1.0:
+                by_y.setdefault(round(r["top"], 1), []).append((r["x0"], r["x1"]))
+        lo, hi = self.ENTRY_SEPARATOR_WIDTH_RANGE
+        seps = []
+        for y, segs in by_y.items():
+            width = max(s[1] for s in segs) - min(s[0] for s in segs)
+            if lo <= width <= hi:
+                seps.append(y)
+        return sorted(seps)
+
     def find_blocks(self, page):
         words = page.extract_words()
         h = page.height
@@ -700,8 +722,17 @@ class UltraRobustExtractor:
         if not class_ys:
             return []
 
+        # Sorted so we can fall back to a neighboring entry's own class header
+        # (or this journal's drawn separator rule, see below) as a block
+        # boundary when there's no "AGENT" line to anchor on — international/
+        # Madrid Protocol filings have no AGENT section at all, and without
+        # this a block falls back to page-bottom/page-top and can swallow the
+        # next/previous entry's content, including its logo.
+        class_ys = sorted(class_ys)
+        separator_ys = self._entry_separator_ys(page)
+
         blocks = []
-        for cy in class_ys:
+        for idx, cy in enumerate(class_ys):
             prev_agent = None
             for ay in agent_ys:
                 if ay < cy:
@@ -713,15 +744,96 @@ class UltraRobustExtractor:
                     curr_agent = ay
                     break
 
-            y0 = (prev_agent + 25) if prev_agent else max(cy - 120, 50)
-            y1 = (curr_agent + 15) if curr_agent else h - 60
+            prev_class_y = class_ys[idx - 1] if idx > 0 else None
+            next_class_y = class_ys[idx + 1] if idx + 1 < len(class_ys) else None
+
+            # This journal draws its own separator rule right before/after
+            # each entry — prefer it over the coarser fallbacks when present.
+            sep_before = max([sy for sy in separator_ys if sy < cy - 5], default=None)
+            sep_after = next((sy for sy in separator_ys if sy > cy + 5), None)
+
+            if prev_agent:
+                y0 = prev_agent + 25
+            elif sep_before:
+                y0 = sep_before + 5
+            elif prev_class_y:
+                y0 = max(prev_class_y + 40, cy - 120, 50)
+            else:
+                y0 = max(cy - 120, 50)
+
+            if curr_agent:
+                y1 = curr_agent + 15
+            elif sep_after:
+                y1 = sep_after - 3
+            elif next_class_y:
+                y1 = next_class_y - 20
+            else:
+                y1 = h - 60
 
             if y1 - y0 > 100:
-                blocks.append({"bbox": (0, y0, w, y1), "class_y": cy})
+                # Truncated (continues onto the next page) only when NO
+                # closing boundary was found at all on this page — a drawn
+                # separator or a next entry's own header both count as proof
+                # this entry is actually complete here.
+                truncated = curr_agent is None and sep_after is None and next_class_y is None
+                blocks.append({"bbox": (0, y0, w, y1), "class_y": cy, "truncated": truncated})
 
         return blocks
 
-    def extract_from_block(self, page, block_info, page_num):
+    def _first_class_y(self, page):
+        """y-position of the first 'CLASS : ...' header line on this page, or None."""
+        words = page.extract_words()
+        lines = {}
+        for word in words:
+            y = round(word["top"], 1)
+            lines.setdefault(y, []).append(word)
+        for y, ws in sorted(lines.items()):
+            txt = " ".join(w["text"] for w in ws)
+            if re.match(r"^\s*CLASS\s*:\s*[\d,\s]+\s*$", txt, re.IGNORECASE):
+                return y
+        return None
+
+    def _looks_like_applicant_name(self, name):
+        """This journal's applicant names are ALL-CAPS company names. A goods-
+        list fragment (e.g. "milk", "Cinnamon (spice)") reads as mixed/lower
+        case instead — a cheap, effective tell that extraction grabbed the
+        wrong thing (usually because the real name is on the next page)."""
+        if not name or len(name.strip()) < 4:
+            return False
+        letters = [c for c in name if c.isalpha()]
+        if not letters:
+            return False
+        return sum(1 for c in letters if c.isupper()) / len(letters) > 0.6
+
+    SERIES_MARKER = re.compile(r"series of\s+\w+\s+trade\s*marks", re.IGNORECASE)
+    MAX_LOOKAHEAD_PAGES = 3
+    MAX_LOOKBACK_PAGES = 5
+    PAGE_BOILERPLATE = re.compile(
+        r"INTELLECTUAL PROPERTY OFFICIAL JOURNAL\s*\n?\s*BATCH\s+\d+/\d+\s+\w+\s+\d+,\s+\d+"
+        r"|TRADEMARK\s+Page\s+\d+",
+        re.IGNORECASE,
+    )
+
+    def _strip_page_boilerplate(self, text):
+        """Cross-page stitching pulls in whole pages/leftover chunks — strip the
+        fixed header/footer boilerplate so it doesn't leak into description text."""
+        return self.PAGE_BOILERPLATE.sub(" ", text or "").strip()
+
+    def _page_last_class_y(self, page):
+        """y-position of the LAST 'CLASS : ...' header line on this page, or None."""
+        words = page.extract_words()
+        lines = {}
+        for word in words:
+            y = round(word["top"], 1)
+            lines.setdefault(y, []).append(word)
+        last = None
+        for y, ws in sorted(lines.items()):
+            txt = " ".join(w["text"] for w in ws)
+            if re.match(r"^\s*CLASS\s*:\s*[\d,\s]+\s*$", txt, re.IGNORECASE):
+                last = y
+        return last
+
+    def extract_from_block(self, page, block_info, page_num, pages_to_process=None, page_index=None):
         bbox = block_info["bbox"]
 
         block_page = page.within_bbox(bbox)
@@ -731,6 +843,80 @@ class UltraRobustExtractor:
 
         lines = [line.strip() for line in text.split("\n") if line.strip()]
         fields, completeness = self.parse_fields(text, lines)
+
+        def page_at(offset):
+            if pages_to_process is None or page_index is None:
+                return None
+            idx = page_index + offset
+            return pages_to_process[idx] if 0 <= idx < len(pages_to_process) else None
+
+        # The applicant name doesn't look like a real company name — this
+        # journal draws a closing separator per PAGE, not per logical entry,
+        # so an entry's own content can still spill onto later pages even
+        # though this page's portion looks visually "closed." Retry with each
+        # following page's leading continuation stitched in (stopping as soon
+        # as one actually yields a plausible name, or a genuine next entry is
+        # found — meaning the real name just isn't there to be found).
+        if not self._looks_like_applicant_name(fields["applicant_name"]):
+            for offset in range(1, self.MAX_LOOKAHEAD_PAGES + 1):
+                nxt = page_at(offset)
+                if nxt is None:
+                    break
+                next_cy = self._first_class_y(nxt)
+                cutoff = (next_cy - 20) if next_cy else nxt.height
+                if cutoff > 20:
+                    try:
+                        continuation = self._strip_page_boilerplate(nxt.within_bbox((0, 0, nxt.width, cutoff)).extract_text())
+                    except Exception:
+                        continuation = None
+                    if continuation:
+                        stitched_text = text + "\n" + continuation
+                        stitched_lines = [l.strip() for l in stitched_text.split("\n") if l.strip()]
+                        stitched_fields, stitched_completeness = self.parse_fields(stitched_text, stitched_lines)
+                        if self._looks_like_applicant_name(stitched_fields["applicant_name"]):
+                            text, lines, fields, completeness = stitched_text, stitched_lines, stitched_fields, stitched_completeness
+                            break
+                if next_cy is not None:
+                    break  # a genuine next entry starts here — nothing more of ours to find
+
+        # "Series of N trademarks" filings print their combined class summary
+        # and applicant/agent block in the MIDDLE of their own content, with a
+        # large — sometimes multi-page — run of goods-list text before it that
+        # find_blocks() has no way to know belongs to this entry. Detect the
+        # marker and walk backward, reusing find_blocks() on each earlier page
+        # to find that page's own last (genuinely different) entry, so we only
+        # absorb text that comes AFTER it — never another entry's own content.
+        if self.SERIES_MARKER.search(text):
+            prefix = ""
+            for offset in range(1, self.MAX_LOOKBACK_PAGES + 1):
+                prev = page_at(-offset)
+                if prev is None:
+                    break
+                prev_blocks = self.find_blocks(prev)
+                if prev_blocks:
+                    prev_last_y1 = prev_blocks[-1]["bbox"][3]
+                    try:
+                        chunk = prev.within_bbox((0, prev_last_y1, prev.width, prev.height)).extract_text()
+                    except Exception:
+                        chunk = None
+                    prefix = self._strip_page_boilerplate(chunk) + "\n" + prefix
+                    break  # found the true previous entry's own end — stop here
+                else:
+                    try:
+                        chunk = prev.extract_text()
+                    except Exception:
+                        chunk = None
+                    prefix = self._strip_page_boilerplate(chunk) + "\n" + prefix
+            if prefix.strip():
+                stitched_text = prefix + "\n" + text
+                stitched_lines = [l.strip() for l in stitched_text.split("\n") if l.strip()]
+                stitched_fields, stitched_completeness = self.parse_fields(stitched_text, stitched_lines)
+                # Keep this pass's own serial/applicant (already correct — they
+                # sit after the goods lists we're prefixing in), just recover
+                # the now-complete description.
+                if stitched_fields["description"]:
+                    fields["description"] = stitched_fields["description"]
+                completeness = max(completeness, stitched_completeness)
 
         if not fields["serial_number"]:
             self.log("❌ No serial number - skipping")
@@ -854,7 +1040,7 @@ class UltraRobustExtractor:
 
                     blocks = self.find_blocks(page)
                     for block in blocks:
-                        data = self.extract_from_block(page, block, pnum)
+                        data = self.extract_from_block(page, block, pnum, pages_to_process=pages_to_process, page_index=i)
                         if data:
                             results.append(data)
                     

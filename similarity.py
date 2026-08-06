@@ -24,6 +24,9 @@ TEXT_LITERAL_SUBSTRING_SCORE   = 0.85
 CLIP_TEXT_WEIGHT               = 0.9
 FUZZY_TEXT_WEIGHT              = 0.95
 PHASH_DISAGREEMENT_CEILING     = 0.25
+# Stricter than PHASH_DISAGREEMENT_CEILING: used when ORB has no reliable
+# second opinion (see ORB_MIN_KEYPOINTS) and phash alone must carry the gate.
+PHASH_ONLY_FALLBACK_FLOOR      = 0.45
 PHASH_DAMPENING_FACTOR         = 0.4
 IMG_SIM_SATURATION             = 0.92
 
@@ -64,18 +67,25 @@ def phash_score_bytes(b1: bytes, b2: bytes) -> float:
         return 0.0
 
 
-def orb_match_score_bytes(b1: bytes, b2: bytes) -> float:
+ORB_MIN_KEYPOINTS = 15  # below this, too few keypoints for the match score to mean anything
+
+
+def orb_match_score_bytes(b1: bytes, b2: bytes):
+    """Returns (score, reliable). reliable=False when either image has too few
+    detectable keypoints (e.g. a plain icon with little internal texture) —
+    callers should not treat an unreliable near-zero score as evidence of
+    dissimilarity, since ORB simply couldn't get a meaningful read at all."""
     try:
         a = cv2.imdecode(np.frombuffer(b1, np.uint8), cv2.IMREAD_GRAYSCALE)
         b = cv2.imdecode(np.frombuffer(b2, np.uint8), cv2.IMREAD_GRAYSCALE)
         if a is None or b is None:
-            return 0.0
+            return 0.0, False
 
         orb    = cv2.ORB_create(500)
         k1, d1 = orb.detectAndCompute(a, None)
         k2, d2 = orb.detectAndCompute(b, None)
         if d1 is None or d2 is None:
-            return 0.0
+            return 0.0, False
 
         bf      = cv2.BFMatcher(cv2.NORM_HAMMING)
         matches = bf.knnMatch(d1, d2, k=2)
@@ -86,10 +96,11 @@ def orb_match_score_bytes(b1: bytes, b2: bytes) -> float:
             m, n = m_n
             if m.distance < 0.75 * n.distance:
                 good += 1
-        denom = max(1, min(len(k1), len(k2)))
-        return float(good) / denom
+        smaller_count = min(len(k1), len(k2))
+        denom = max(1, smaller_count)
+        return float(good) / denom, smaller_count >= ORB_MIN_KEYPOINTS
     except Exception:
-        return 0.0
+        return 0.0, False
 
 
 def score_match(q_name_raw, db_name_raw, q_logo_bytes, db_logo_bytes, t_ai, l_ai, q_has_img):
@@ -116,15 +127,23 @@ def score_match(q_name_raw, db_name_raw, q_logo_bytes, db_logo_bytes, t_ai, l_ai
     fuzzy    = seq_ratio(q_name, db_name) if (q_name and db_name) else 0.0
     text_sim = max(literal, t_ai * CLIP_TEXT_WEIGHT, fuzzy * FUZZY_TEXT_WEIGHT)
 
-    pixel_sim     = phash_score_bytes(q_logo_bytes, db_logo_bytes) if (q_has_img and db_logo_bytes) else 0.0
-    orb_sim       = orb_match_score_bytes(q_logo_bytes, db_logo_bytes) if (q_has_img and db_logo_bytes) else 0.0
+    pixel_sim = phash_score_bytes(q_logo_bytes, db_logo_bytes) if (q_has_img and db_logo_bytes) else 0.0
+    if q_has_img and db_logo_bytes:
+        orb_sim, orb_reliable = orb_match_score_bytes(q_logo_bytes, db_logo_bytes)
+    else:
+        orb_sim, orb_reliable = 0.0, False
     # min(), not max(): eval showed phash alone gives false agreement on unrelated
-    # logos (avg 0.517 on false positives) while ORB stays near-zero (0.035) —
-    # both signals must agree there's real structural similarity to trust l_ai.
-    corroboration = min(pixel_sim, orb_sim)
+    # logos while ORB stays near-zero — both signals must agree there's real
+    # structural similarity to trust l_ai. But ORB needs enough keypoints to mean
+    # anything (a plain icon with little texture yields near-zero regardless of
+    # similarity) — fall back to phash alone when ORB couldn't get a reliable read.
+    if orb_reliable:
+        corroboration, ceiling = min(pixel_sim, orb_sim), PHASH_DISAGREEMENT_CEILING
+    else:
+        corroboration, ceiling = pixel_sim, PHASH_ONLY_FALLBACK_FLOOR
     img_sim = (
         l_ai * PHASH_DAMPENING_FACTOR
-        if corroboration < PHASH_DISAGREEMENT_CEILING
+        if corroboration < ceiling
         else max(l_ai, pixel_sim, orb_sim)
     )
     if img_sim > IMG_SIM_SATURATION:

@@ -78,7 +78,10 @@ def evaluate(pairs, rows):
         result = similarity.score_match(q_name, db_name, a["logo_data"], b["logo_data"], t_ai, l_ai, q_has_img)
 
         pixel_sim = similarity.phash_score_bytes(a["logo_data"], b["logo_data"]) if (q_has_img and b["logo_data"]) else 0.0
-        orb_sim   = similarity.orb_match_score_bytes(a["logo_data"], b["logo_data"]) if (q_has_img and b["logo_data"]) else 0.0
+        if q_has_img and b["logo_data"]:
+            orb_sim, orb_reliable = similarity.orb_match_score_bytes(a["logo_data"], b["logo_data"])
+        else:
+            orb_sim, orb_reliable = 0.0, False
 
         scored.append((qid, cid, label, result["text_sim"], result["img_sim"], result["include"],
                        result["threshold"], t_ai, l_ai, pixel_sim, orb_sim))

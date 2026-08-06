@@ -478,27 +478,74 @@ if (resetSearchBtn) {
 // =============================
 const deleteBtn = document.getElementById("deleteDatasetBtn");
 if (deleteBtn) {
-    deleteBtn.addEventListener("click", () => {
+    deleteBtn.addEventListener("click", async () => {
         const checked = Array.from(document.querySelectorAll(".manage-checkbox:not(#selectAll):checked"));
         if (checked.length === 0) { showPopup("Please select at least one record to delete.", true); return; }
         if (!confirm(`Delete ${checked.length} record(s)? This cannot be undone.`)) return;
 
         const ids = checked.map(c => parseInt(c.dataset.id, 10)).filter(Boolean);
-        fetch("/api/trademarks", {
-            method:  "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ ids })
-        })
-        .then(r => r.json())
-        .then(payload => {
-            if (payload.success) {
-                showPopup(`✅ ${payload.deleted} record(s) deleted.`);
-                loadTrademarks();
-                if (selectAllCheckbox) selectAllCheckbox.checked = false;
-            } else {
-                showPopup("❌ Delete failed: " + (payload.message || "server error"), true);
+
+        const overlay        = document.getElementById("deleteProgressOverlay");
+        const subtitle        = document.getElementById("deleteProgressSubtitle");
+        const progressBar     = document.getElementById("deleteProgressBar");
+        const progressPercent = document.getElementById("deleteProgressPercent");
+        const progressText    = document.getElementById("deleteProgressText");
+
+        subtitle.textContent      = "Please wait while the selected records are removed.";
+        progressBar.style.width   = "0%";
+        progressBar.style.backgroundColor = "#e74c3c";
+        progressPercent.textContent = "0%";
+        progressText.textContent  = `0 of ${ids.length}`;
+        overlay.classList.add("show");
+
+        const originalBtnText = deleteBtn.innerText;
+        deleteBtn.innerText    = "⏳ Deleting...";
+        deleteBtn.disabled     = true;
+
+        try {
+            const response = await fetch("/api/trademarks", {
+                method:  "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body:    JSON.stringify({ ids })
+            });
+            if (!response.ok) throw new Error("Server error");
+
+            const reader  = response.body.getReader();
+            const decoder = new TextDecoder();
+            let leftover  = "";
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                const combined = leftover + decoder.decode(value, { stream: true });
+                const lines    = combined.split("\n");
+                leftover       = lines.pop();
+
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                        const data = JSON.parse(line);
+                        if (data.status === "deleting") {
+                            progressBar.style.width     = `${data.percentage}%`;
+                            progressPercent.textContent = `${data.percentage}%`;
+                            progressText.textContent    = `${data.current} of ${data.total}`;
+                        } else if (data.status === "complete") {
+                            progressBar.style.backgroundColor = "#2ecc71";
+                            subtitle.textContent = data.message;
+                            showPopup(`✅ ${data.message}`);
+                            loadTrademarks();
+                            if (selectAllCheckbox) selectAllCheckbox.checked = false;
+                        }
+                    } catch (e) { console.warn("Delete stream parse error:", e); }
+                }
             }
-        })
-        .catch(err => { console.error("Delete error:", err); showPopup("❌ Server error while deleting.", true); });
+        } catch (err) {
+            console.error("Delete error:", err);
+            showPopup("❌ Server error while deleting.", true);
+        } finally {
+            deleteBtn.innerText = originalBtnText;
+            deleteBtn.disabled  = false;
+            setTimeout(() => { overlay.classList.remove("show"); }, 1200);
+        }
     });
 }

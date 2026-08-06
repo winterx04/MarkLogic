@@ -416,10 +416,10 @@ def search_trademarks(words=None, class_filter=None, id_list=None):
 
         where_clauses.append("""
         (
-            trademark_name ILIKE %s
-        OR applicant_name ILIKE %s
+            REGEXP_REPLACE(trademark_name, '\\s+', '', 'g') ILIKE %s
+        OR REGEXP_REPLACE(applicant_name, '\\s+', '', 'g') ILIKE %s
         OR REGEXP_REPLACE(serial_number, '\\s+', '', 'g') ILIKE %s
-        OR description ILIKE %s
+        OR REGEXP_REPLACE(description, '\\s+', '', 'g') ILIKE %s
         )
         """)
         params.extend([term, term, term, term])
