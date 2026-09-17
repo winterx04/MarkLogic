@@ -20,30 +20,35 @@ from pdf2image import convert_from_path, pdfinfo_from_path
 
 POPPLER_PATH = r"C:\poppler-25.12.0\Library\bin"   # ← update if needed
 
-# Class names must match your logo_dataset.yaml order
+# Class names for the model trained on the CURRENT final_dataset/logo_dataset.yaml
+# scheme (text_logo merged into logo, international_registration_number added).
+# This does NOT match models/best_colab.pt (the old 9-class model, text_logo
+# included, no international_registration_number) — that's why the default
+# --model path below points at a file that doesn't exist yet, so an accidental
+# run without --model fails loudly instead of silently shifting every label.
 CLASS_NAMES = [
     "logo",
-    "text_logo",
     "serial_number",
     "description",
     "agent",
     "applicant",
     "class",
     "date",
-    "international_registration_date"
+    "international_registration_date",
+    "international_registration_number",
 ]
 
 # Color per class (BGR) — shown on the output image
 CLASS_COLORS = {
-    "logo":                           (0,   0,   255),  # Red
-    "text_logo":                      (180, 0,   255),  # Pink
-    "serial_number":                  (255, 0,   0  ),  # Blue
-    "description":                    (0,   170, 0  ),  # Green
-    "agent":                          (0,   136, 255),  # Orange
-    "applicant":                      (255, 0,   170),  # Purple
-    "class":                          (255, 170, 0  ),  # Cyan
-    "date":                           (47,  52,  74 ),  # Dark brown
-    "international_registration_date":(19,  69,  139),  # Brown
+    "logo":                             (0,   0,   255),  # Red
+    "serial_number":                    (255, 0,   0  ),  # Blue
+    "description":                      (0,   170, 0  ),  # Green
+    "agent":                            (0,   136, 255),  # Orange
+    "applicant":                        (255, 0,   170),  # Purple
+    "class":                            (255, 170, 0  ),  # Cyan
+    "date":                             (47,  52,  74 ),  # Dark brown
+    "international_registration_date":  (19,  69,  139),  # Brown
+    "international_registration_number":(139, 125, 96 ),  # Slate blue-grey
 }
 
 
@@ -180,7 +185,7 @@ def prompt_input():
 def main():
     parser = argparse.ArgumentParser(description="Test your trained YOLO trademark model.")
     parser.add_argument("--input",      default=None,                              help="Path to image (.png/.jpg) or PDF")
-    parser.add_argument("--model",      default="runs/detect/train-2/weights/best.pt", help="Path to trained model .pt file")
+    parser.add_argument("--model",      default="models/best_colab2.pt", help="Path to trained model .pt file (default: the not-yet-downloaded 9-class-v2 retrain; pass --model models/best_colab.pt explicitly if you intentionally want to test the old model)")
     parser.add_argument("--conf",       type=float, default=0.25,                 help="Confidence threshold (default: 0.25)")
     parser.add_argument("--out",        default="test_results",                   help="Output folder for annotated images")
     parser.add_argument("--start_page", type=int,   default=4,                    help="PDF: first page to process")

@@ -20,16 +20,24 @@ import tempfile
 
 # ── Your desired class order (must match logo_dataset.yaml) ──
 DESIRED_CLASSES = [
-    "logo",                           # 0
-    "text_logo",                      # 1
-    "serial_number",                  # 2
-    "description",                    # 3
-    "agent",                          # 4
-    "applicant",                      # 5
-    "class",                          # 6
-    "date",                           # 7
-    "international_registration_date" # 8
+    "logo",                            # 0
+    "serial_number",                   # 1
+    "description",                     # 2
+    "agent",                           # 3
+    "applicant",                       # 4
+    "class",                           # 5
+    "date",                            # 6
+    "international_registration_date", # 7
+    "international_registration_number"# 8
 ]
+
+# Classes retired from DESIRED_CLASSES that should still fold into another
+# class instead of being skipped as "unknown" — e.g. text_logo was merged
+# into logo. Anything in an export using one of these old names is treated
+# as if it were labeled with the target name.
+CLASS_ALIASES = {
+    "text_logo": "logo",
+}
 
 
 def read_classes(classes_txt_path):
@@ -42,8 +50,9 @@ def build_remap(ls_classes):
     """Build a dict: label_studio_id -> your_desired_id."""
     remap = {}
     for old_id, name in enumerate(ls_classes):
-        if name in DESIRED_CLASSES:
-            remap[old_id] = DESIRED_CLASSES.index(name)
+        target_name = CLASS_ALIASES.get(name, name)
+        if target_name in DESIRED_CLASSES:
+            remap[old_id] = DESIRED_CLASSES.index(target_name)
         else:
             print(f"  ⚠ Unknown class '{name}' in export — will be skipped!")
     return remap
