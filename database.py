@@ -35,6 +35,7 @@ def init_db():
             id SERIAL PRIMARY KEY,
             serial_number VARCHAR(50) UNIQUE NOT NULL,
             int_reg_number VARCHAR(50),
+            international_registration_date TEXT,
             class_indices TEXT,
             registration_date TEXT,
             trademark_name TEXT,
@@ -68,6 +69,25 @@ def init_db():
         );
     """)
 
+    # One-to-many logo storage: a single trademark filing can have more than
+    # one logo crop (e.g. a device + a separate text_logo, or several
+    # sub-elements of one composite mark). Each row is one crop; trademark_id
+    # ties any number of them back to the same parent filing.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS trademark_logos (
+            id SERIAL PRIMARY KEY,
+            trademark_id INTEGER NOT NULL REFERENCES trademarks(id) ON DELETE CASCADE,
+            logo_data BYTEA NOT NULL,
+            logo_embedding BYTEA,
+            label TEXT,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_trademark_logos_trademark_id
+        ON trademark_logos(trademark_id);
+    """)
+
     # Client Trademarks Table
     cur.execute("""
         CREATE TABLE IF NOT EXISTS client_trademarks (
@@ -83,6 +103,7 @@ def init_db():
     """)
     # Migrates existing installs (CREATE TABLE IF NOT EXISTS above is a no-op for them)
     cur.execute("ALTER TABLE client_trademarks ADD COLUMN IF NOT EXISTS text_embedding BYTEA;")
+    cur.execute("ALTER TABLE trademarks ADD COLUMN IF NOT EXISTS international_registration_date TEXT;")
     conn.commit()
     cur.close(); conn.close()
     
@@ -254,10 +275,17 @@ def get_all_client_embeddings():
             db_data['text'].append(np.zeros(similarity.TEXT_EMBEDDING_DIM, dtype=np.float32))
     return db_data
 
-def insert_trademark(data):
-    conn = get_db_connection()
+def insert_trademark(data, conn=None):
+    """Pass an existing connection (e.g. when inserting many records in a
+    loop, such as a PDF batch upload) to avoid the cost of opening a fresh
+    one per call - that overhead alone can dominate a bulk-insert loop's
+    total time. Callers that pass their own conn are responsible for closing
+    it; this function will not close a connection it didn't open itself."""
+    owns_conn = conn is None
+    if owns_conn:
+        conn = get_db_connection()
     cur = conn.cursor()
-    
+
     # This removes "All included in Class 11" so you get pure goods data
     raw_desc = data.get('description', '')
     if raw_desc:
@@ -266,17 +294,25 @@ def insert_trademark(data):
     text_emb = data['text_embedding'].tobytes() if data.get('text_embedding') is not None else None
     logo_emb = data['logo_embedding'].tobytes() if data.get('logo_embedding') is not None else None
 
+    # Accept either key name - pdf_extractor.py's result dicts use the
+    # spelled-out 'international_registration_number', while some older
+    # callers may still use the column's own short name.
+    int_reg_number = data.get('int_reg_number') or data.get('international_registration_number')
+
     try:
         cur.execute("""
             INSERT INTO trademarks (
-                serial_number, int_reg_number, class_indices, registration_date, 
-                trademark_name, description, disclaimer, applicant_name, 
-                applicant_address, agent_details, logo_data, evidence_snapshot, 
+                serial_number, int_reg_number, international_registration_date,
+                class_indices, registration_date,
+                trademark_name, description, disclaimer, applicant_name,
+                applicant_address, agent_details, logo_data, evidence_snapshot,
                 text_embedding, logo_embedding, category, is_split,
                 batch_number, batch_year
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (serial_number) DO UPDATE SET
+                int_reg_number = EXCLUDED.int_reg_number,
+                international_registration_date = EXCLUDED.international_registration_date,
                 trademark_name = EXCLUDED.trademark_name,
                 class_indices = EXCLUDED.class_indices,
                 description = EXCLUDED.description,
@@ -288,9 +324,11 @@ def insert_trademark(data):
                 text_embedding = EXCLUDED.text_embedding,
                 logo_embedding = EXCLUDED.logo_embedding,
                 batch_number = EXCLUDED.batch_number,
-                batch_year = EXCLUDED.batch_year;
+                batch_year = EXCLUDED.batch_year
+            RETURNING id;
         """, (
-            data.get('serial_number'), data.get('int_reg_number'),
+            data.get('serial_number'), int_reg_number,
+            data.get('international_registration_date'),
             data.get('class_indices'), data.get('registration_date'),
             data.get('trademark_name'), data.get('description'),
             data.get('disclaimer'), data.get('applicant_name'),
@@ -301,12 +339,17 @@ def insert_trademark(data):
             data.get('batch_number'),
             data.get('batch_year')
         ))
+        trademark_id = cur.fetchone()[0]
         conn.commit()
+        return trademark_id
     except Exception as e:
         print(f"Upsert Error: {e}")
         conn.rollback()
+        return None
     finally:
-        cur.close(); conn.close()
+        cur.close()
+        if owns_conn:
+            conn.close()
 
 def get_all_trademarks():
     conn = get_db_connection()
@@ -352,6 +395,89 @@ def get_evidence(trademark_id):
     data = cur.fetchone()
     cur.close(); conn.close()
     return data[0] if data else None
+
+def insert_trademark_logo(trademark_id, logo_data, logo_embedding=None, label=None, conn=None):
+    """Inserts one logo crop as a child row of an existing trademark. A single
+    trademark can have any number of these (e.g. a device + a text_logo, or
+    several sub-elements of one composite mark - see trademark_logos above).
+    Pass an existing connection when inserting many in a loop - see
+    insert_trademark's docstring for why that matters."""
+    owns_conn = conn is None
+    if owns_conn:
+        conn = get_db_connection()
+    cur = conn.cursor()
+    logo_emb = logo_embedding.tobytes() if logo_embedding is not None else None
+    try:
+        cur.execute("""
+            INSERT INTO trademark_logos (trademark_id, logo_data, logo_embedding, label)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+        """, (trademark_id, psycopg2.Binary(logo_data), logo_emb, label))
+        new_id = cur.fetchone()[0]
+        conn.commit()
+        return new_id
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        cur.close()
+        if owns_conn:
+            conn.close()
+
+def get_trademark_logos(trademark_id):
+    """Fetches every logo crop belonging to one trademark (for display)."""
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cur.execute(
+        "SELECT id, logo_data, label FROM trademark_logos WHERE trademark_id = %s ORDER BY id",
+        (trademark_id,),
+    )
+    rows = cur.fetchall()
+    cur.close(); conn.close()
+    return [dict(r) for r in rows]
+
+def get_all_logo_variant_embeddings():
+    """
+    Fetches every logo embedding for FAISS indexing - both new one-to-many
+    trademark_logos rows AND legacy trademarks.logo_embedding rows that
+    predate this table (kept as a fallback so old data still gets indexed).
+    A trademark with rows in trademark_logos is not double-counted via its
+    legacy column.
+
+    Returns {'ids': [...], 'trademark_ids': [...], 'logo': [...]} where 'ids'
+    are globally-unique keys safe to use as FAISS vector ids (several ids can
+    map to the same trademark_id - that's the whole point).
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    entries = []  # (row_key, trademark_id, embedding_bytes)
+
+    cur.execute("SELECT id, trademark_id, logo_embedding FROM trademark_logos WHERE logo_embedding IS NOT NULL")
+    for row_id, trademark_id, emb_bytes in cur.fetchall():
+        entries.append((row_id, trademark_id, emb_bytes))
+
+    # Legacy fallback: trademarks with an old-style single logo_embedding and
+    # no trademark_logos rows yet. Offset keeps these row_keys out of
+    # trademark_logos' own id space (safe unless that table exceeds 1 billion rows).
+    LEGACY_ID_OFFSET = 1_000_000_000
+    cur.execute("""
+        SELECT t.id, t.logo_embedding
+        FROM trademarks t
+        WHERE t.logo_embedding IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM trademark_logos tl WHERE tl.trademark_id = t.id)
+    """)
+    for trademark_id, emb_bytes in cur.fetchall():
+        entries.append((LEGACY_ID_OFFSET + trademark_id, trademark_id, emb_bytes))
+
+    cur.close(); conn.close()
+
+    db_data = {'ids': [], 'trademark_ids': [], 'logo': []}
+    for row_key, trademark_id, emb_bytes in entries:
+        db_data['ids'].append(row_key)
+        db_data['trademark_ids'].append(trademark_id)
+        db_data['logo'].append(np.frombuffer(emb_bytes, dtype=np.float32))
+    return db_data
 
 def get_all_embeddings(category=None):
     """Fetches embeddings for building the FAISS index."""

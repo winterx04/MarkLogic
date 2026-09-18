@@ -157,17 +157,35 @@ class MLModel:
 # UltraRobustExtractor
 # -------------------------
 class UltraRobustExtractor:
-    def __init__(self, debug=False,yolo_model_path="models/best_t-2.pt"):
+    def __init__(self, debug=False, yolo_model_path="models/best_colab2.pt"):
         self.debug = debug
         self.ml = None
 
-        self.serial_pattern = re.compile(r"\b(?:TM|JV|WM|MM|[A-Z]{2})\d{8,12}\b")
+        # Prefix (TM, JV, etc.) is OPTIONAL - plenty of real serial numbers in
+        # this journal are bare digits with no letter prefix at all (e.g.
+        # "07025604", "2016062700"), and the old prefix-required version
+        # silently dropped every one of those entries rather than just
+        # mislabeling them. Bounded to the first 15 lines of a block (see
+        # parse_fields) and to 8-12 digits, which keeps this from matching
+        # shorter numbers like postal codes.
+        self.serial_pattern = re.compile(r"\b(?:TM|JV|WM|MM|[A-Z]{2})?\d{8,12}\b")
         self.date_pattern = re.compile(
             r"\b\d{1,2}\s+(?:January|February|March|April|May|June|July|August|"
             r"September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\b",
             re.IGNORECASE
         )
         self.class_header_pattern = re.compile(r"CLASS\s*:\s*([\d,\s]+)", re.IGNORECASE | re.MULTILINE)
+        # Only present on Madrid Protocol / international-route filings -
+        # absent on domestic filings, which is expected, not an error.
+        self.intl_reg_number_pattern = re.compile(
+            r"International\s+Registration\s+Number\s*:?\s*([\w./-]+)", re.IGNORECASE
+        )
+        self.intl_reg_date_pattern = re.compile(
+            r"International\s+Registration\s+Date\s*:?\s*"
+            r"(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|"
+            r"September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4})",
+            re.IGNORECASE,
+        )
         self.company_kw = ["SDN", "BHD", "LTD", "INC", "PTY", "CORP", "LLC", "PTE", "CO."]
         # -------------------------
         # YOLO LOGO DETECTOR
@@ -282,11 +300,28 @@ class UltraRobustExtractor:
             self.log(f"Heuristic extraction failed: {e}")
             return None
         
-    # Class IDs matching logo_dataset.yaml
-    LOGO_CLASS_IDS = {0, 1}  # 0=logo, 1=text_logo
+    # Class ID matching the current logo_dataset.yaml (9-class-v2): text_logo
+    # was merged into logo, so this is just the one id now, not a pair.
+    LOGO_CLASS_IDS = {0}  # 0=logo
 
-    def extract_logo_yolo(self, page, block_bbox):
-            if not self.yolo: return None
+    @staticmethod
+    def _iou(a, b):
+        ax0, ay0, ax1, ay1 = a
+        bx0, by0, bx1, by1 = b
+        ix0, iy0 = max(ax0, bx0), max(ay0, by0)
+        ix1, iy1 = min(ax1, bx1), min(ay1, by1)
+        inter = max(0, ix1 - ix0) * max(0, iy1 - iy0)
+        area_a = max(0, ax1 - ax0) * max(0, ay1 - ay0)
+        area_b = max(0, bx1 - bx0) * max(0, by1 - by0)
+        union = area_a + area_b - inter
+        return inter / union if union > 0 else 0.0
+
+    def extract_logos_yolo(self, page, block_bbox):
+            """Returns EVERY logo box found in this block (cropped + cleaned),
+            not just the largest - a composite mark can have several sub-
+            elements (see trademark_logos in database.py) that each deserve
+            their own crop/embedding rather than averaging them into one."""
+            if not self.yolo: return []
             try:
                 img_obj = page.within_bbox(block_bbox).to_image(resolution=300)
                 img     = img_obj.original.convert("RGB")
@@ -294,35 +329,55 @@ class UltraRobustExtractor:
                 results = self.yolo(img, verbose=False, conf=0.15)
 
                 if not results or len(results[0].boxes) == 0:
-                    return None
+                    return []
 
                 boxes    = results[0].boxes.xyxy.cpu().numpy()
                 cls_ids  = results[0].boxes.cls.cpu().numpy().astype(int)
+                confs    = results[0].boxes.conf.cpu().numpy()
 
-                # Filter: only keep logo (0) and text_logo (1) detections
-                logo_boxes = [
-                    b for b, c in zip(boxes, cls_ids)
-                    if c in self.LOGO_CLASS_IDS
-                ]
+                # YOLO's NMS only suppresses duplicates WITHIN a class, so a
+                # text field (e.g. "CLASS : 35") can score as both its real
+                # class AND logo for the same region. When a DIFFERENT class
+                # scores higher there, that's what actually happened - drop
+                # the logo candidate rather than treat it as a second logo.
+                logo_candidates = []
+                for box, cls_id, conf in zip(boxes, cls_ids, confs):
+                    if cls_id not in self.LOGO_CLASS_IDS:
+                        continue
+                    if box[2] <= box[0] or box[3] <= box[1]:
+                        continue  # degenerate/zero-area box
+                    spurious = any(
+                        other_cls not in self.LOGO_CLASS_IDS and other_conf > conf
+                        and self._iou(box, other_box) > 0.5
+                        for other_box, other_cls, other_conf in zip(boxes, cls_ids, confs)
+                    )
+                    if not spurious:
+                        logo_candidates.append((box, conf))
 
-                if not logo_boxes:
-                    return None
+                if not logo_candidates:
+                    return []
 
-                # Among logo/text_logo boxes, pick the largest
-                best_box = max(logo_boxes, key=lambda b: (b[2]-b[0]) * (b[3]-b[1]))
+                # Highest confidence first, not largest area - a small genuine
+                # logo can legitimately have less pixel area than a spurious
+                # detection, and confidence is the more direct signal of
+                # which one the model actually believes is a logo. Callers
+                # that only want "the" primary logo take crops[0].
+                logo_candidates.sort(key=lambda bc: bc[1], reverse=True)
 
-                x0 = max(0,     int(best_box[0]))
-                y0 = max(0,     int(best_box[1]))
-                x1 = min(img_w, int(best_box[2]))
-                y1 = min(img_h, int(best_box[3]))
-
-                logo_crop = img.crop((x0, y0, x1, y1))
-                buf = io.BytesIO()
-                logo_crop.save(buf, format="PNG")
-                return self.remove_white_bg_make_transparent(buf.getvalue())
+                crops = []
+                for box, conf in logo_candidates:
+                    x0 = max(0,     int(box[0]))
+                    y0 = max(0,     int(box[1]))
+                    x1 = min(img_w, int(box[2]))
+                    y1 = min(img_h, int(box[3]))
+                    logo_crop = img.crop((x0, y0, x1, y1))
+                    buf = io.BytesIO()
+                    logo_crop.save(buf, format="PNG")
+                    crops.append(self.remove_white_bg_make_transparent(buf.getvalue()))
+                return crops
             except Exception as e:
                 self.log(f"YOLO extraction error: {e}")
-                return None
+                return []
             
     # def extract_logo_yolo(self, page, block_bbox):
     #     """
@@ -533,6 +588,8 @@ class UltraRobustExtractor:
         fields = {
             "serial_number": None,
             "registration_date": None,
+            "international_registration_date": None,
+            "international_registration_number": None,
             "trademark_name": "",
             "class_indices": "",
             "applicant_name": "",
@@ -549,6 +606,15 @@ class UltraRobustExtractor:
                 if dm:
                     fields["registration_date"] = dm.group(0)
                 break
+
+        # Madrid Protocol / international-route filings only - absent on
+        # domestic filings, which correctly leaves these fields empty.
+        m = self.intl_reg_number_pattern.search(text)
+        if m:
+            fields["international_registration_number"] = m.group(1).strip()
+        m = self.intl_reg_date_pattern.search(text)
+        if m:
+            fields["international_registration_date"] = m.group(1).strip()
 
         m = self.class_header_pattern.search(text)
         if m:
@@ -752,19 +818,25 @@ class UltraRobustExtractor:
             sep_before = max([sy for sy in separator_ys if sy < cy - 5], default=None)
             sep_after = next((sy for sy in separator_ys if sy > cy + 5), None)
 
-            if prev_agent:
-                y0 = prev_agent + 25
-            elif sep_before:
+            # Separator checked FIRST, matching the comment above (and its
+            # actual intent) - curr_agent/prev_agent mark where an AGENT
+            # LABEL starts, not where its (often multi-line, wrapped) address
+            # actually ends, so "+15" past it routinely truncated real agent
+            # text to just its first line. The drawn separator marks the
+            # true end of an entry regardless of how many lines it wraps to.
+            if sep_before:
                 y0 = sep_before + 5
+            elif prev_agent:
+                y0 = prev_agent + 25
             elif prev_class_y:
                 y0 = max(prev_class_y + 40, cy - 120, 50)
             else:
                 y0 = max(cy - 120, 50)
 
-            if curr_agent:
-                y1 = curr_agent + 15
-            elif sep_after:
+            if sep_after:
                 y1 = sep_after - 3
+            elif curr_agent:
+                y1 = curr_agent + 15
             elif next_class_y:
                 y1 = next_class_y - 20
             else:
@@ -836,7 +908,12 @@ class UltraRobustExtractor:
     def extract_from_block(self, page, block_info, page_num, pages_to_process=None, page_index=None):
         bbox = block_info["bbox"]
 
-        block_page = page.within_bbox(bbox)
+        # crop(), not within_bbox() - within_bbox requires a text line's
+        # FULL bounding box (top and bottom) to fit inside bbox, so a line
+        # whose top sits just before the boundary but whose bottom edge
+        # (top + line height) extends past it gets silently dropped whole.
+        # crop() keeps anything overlapping the box, clipped to it instead.
+        block_page = page.crop(bbox)
         text = block_page.extract_text()
         if not text:
             return None
@@ -866,7 +943,13 @@ class UltraRobustExtractor:
                 cutoff = (next_cy - 20) if next_cy else nxt.height
                 if cutoff > 20:
                     try:
-                        continuation = self._strip_page_boilerplate(nxt.within_bbox((0, 0, nxt.width, cutoff)).extract_text())
+                        # crop(), not within_bbox() - see the comment on the
+                        # same substitution in extract_from_block above. This
+                        # is exactly what silently dropped the last line of a
+                        # multi-page agent address (its bottom edge landed a
+                        # few points past `cutoff` even though its top - and
+                        # all its actual text - sat well before it).
+                        continuation = self._strip_page_boilerplate(nxt.crop((0, 0, nxt.width, cutoff)).extract_text())
                     except Exception:
                         continuation = None
                     if continuation:
@@ -896,7 +979,8 @@ class UltraRobustExtractor:
                 if prev_blocks:
                     prev_last_y1 = prev_blocks[-1]["bbox"][3]
                     try:
-                        chunk = prev.within_bbox((0, prev_last_y1, prev.width, prev.height)).extract_text()
+                        # crop(), not within_bbox() - same reasoning as above.
+                        chunk = prev.crop((0, prev_last_y1, prev.width, prev.height)).extract_text()
                     except Exception:
                         chunk = None
                     prefix = self._strip_page_boilerplate(chunk) + "\n" + prefix
@@ -922,22 +1006,30 @@ class UltraRobustExtractor:
             self.log("❌ No serial number - skipping")
             return None
 #
-        # logo_data = self.extract_logo_only(page, bbox)
-        logo_data = None
-        # Try YOLO first
-        if self.yolo:
-            logo_data = self.extract_logo_yolo(page, bbox)
+        # Try YOLO first - may find zero, one, or several logo sub-elements.
+        logo_crops = self.extract_logos_yolo(page, bbox) if self.yolo else []
 
-        # fallback to heuristic method
-        if not logo_data:
+        # fallback to heuristic method only if YOLO found nothing at all
+        if not logo_crops:
             self.log(f"YOLO found no logo on page {page_num}, falling back to heuristic")
-            logo_data = self.extract_logo_only(page, bbox)
-        logo_emb = None
-        if logo_data and self.ml:
-            try:
-                logo_emb = self.ml.generate_image_embedding(io.BytesIO(logo_data))
-            except Exception as e:
-                self.log(f"Logo embedding failed: {e}")
+            heuristic_logo = self.extract_logo_only(page, bbox)
+            if heuristic_logo:
+                logo_crops = [heuristic_logo]
+
+        logos = []
+        for crop_bytes in logo_crops:
+            emb = None
+            if self.ml:
+                try:
+                    emb = self.ml.generate_image_embedding(io.BytesIO(crop_bytes))
+                except Exception as e:
+                    self.log(f"Logo embedding failed: {e}")
+            logos.append({"logo_data": crop_bytes, "logo_embedding": emb})
+
+        # Primary logo (largest) kept in the old single-value fields too, for
+        # any code still reading logo_data/logo_embedding directly.
+        logo_data = logos[0]["logo_data"] if logos else None
+        logo_emb = logos[0]["logo_embedding"] if logos else None
 
         try:
             block_img = block_page.to_image(resolution=150)
@@ -959,6 +1051,8 @@ class UltraRobustExtractor:
             "page_number": page_num,
             "serial_number": fields["serial_number"],
             "registration_date": fields["registration_date"],
+            "international_registration_date": fields["international_registration_date"],
+            "international_registration_number": fields["international_registration_number"],
             "trademark_name": fields["trademark_name"],
             "class_indices": fields["class_indices"],
             "applicant_name": fields["applicant_name"],
@@ -967,6 +1061,7 @@ class UltraRobustExtractor:
             "description": fields["description"],
             "logo_data": logo_data,
             "logo_embedding": logo_emb,
+            "logos": logos,
             "text_embedding": text_emb,
             "block_snapshot": snapshot,
             "completeness": completeness
@@ -1038,6 +1133,16 @@ class UltraRobustExtractor:
                     # YIELD progress update to the caller (Flask/JS)
                     yield {"status": "extracting", "percentage": progress, "current_page": pnum}
 
+                    # NOTE: batching a page's blocks into one YOLO call, and
+                    # reusing that render for the evidence snapshot, were both
+                    # tried as speed optimizations and reverted - batching
+                    # measurably LOST real detections on CPU (blocks of
+                    # different sizes get resized differently once batched,
+                    # confirmed: 2 of 9 test records lost a logo) while also
+                    # being slower, and the render-reuse alone turned out to
+                    # be a wash once actually measured. Neither survived
+                    # profiling, so this stays as originally written: each
+                    # block renders and infers independently.
                     blocks = self.find_blocks(page)
                     for block in blocks:
                         data = self.extract_from_block(page, block, pnum, pages_to_process=pages_to_process, page_index=i)

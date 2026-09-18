@@ -5,3 +5,5 @@ __pycache__/
 /final_dataset/
 .env
 /eval/bootstrap_pairs.csv
+create_admin_user.py
+/models/*.pt
