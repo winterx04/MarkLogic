@@ -283,6 +283,94 @@ function renderImageMode(results) {
     });
 }
 
+const MATCHES_PER_PAGE = 10;
+
+function renderMatchRow(m, group) {
+    const row = document.createElement('div');
+    row.className = 'match-row';
+    // Pass group.all_matches (up to 20) as third arg for PDF use
+    row.onclick = () => openModal(m, group.matches, group.all_matches || group.matches);
+    const imgSrc = getLogoUrl(m.id);
+    const bestSim = Math.max(m.imgSim ?? 0, m.textSim ?? 0);
+    // A high image score can come purely from shared font/style rather than
+    // the same word - similarity.py flags this via textMismatch when it has
+    // positive evidence (registered name or OCR) that the wording differs.
+    const mismatchNote = m.textMismatch && m.textMismatch !== 'none'
+        ? `<div class="match-mismatch-note" title="High visual score is driven by shared font/style - the actual wording is different (checked via ${m.textMismatch === 'ocr' ? 'OCR on the logo image' : 'the registered name'}).">⚠ Style/font match only - wording differs</div>`
+        : '';
+    row.innerHTML = `
+        <div class="match-thumb"><img src="${imgSrc}" loading="lazy"></div>
+        <div class="match-info">
+            <div class="match-name">${m.label}</div>
+            <div class="match-meta">Image: ${m.imgSim}% &nbsp;|&nbsp; Text: ${m.textSim}%</div>
+            ${mismatchNote}
+        </div>
+        <span class="score-pill ${bestSim >= 80 ? 'high' : 'mid'}">${bestSim}%</span>`;
+    return row;
+}
+
+function renderSourceBlock(group, bi) {
+    const block = document.createElement('div');
+    block.className = 'source-block';
+    block.style.animationDelay = `${bi * 0.07}s`;
+
+    const header = document.createElement('div');
+    header.className = 'source-block-header';
+    header.innerHTML = `
+        <div class="source-meta"><div class="tm-label">Source Item #${bi + 1}</div></div>
+        <span class="match-count-badge has-matches">${group.matches.length} matches</span>`;
+
+    const matchList = document.createElement('div');
+    matchList.className = 'match-list';
+
+    const pagination = document.createElement('div');
+    pagination.className = 'match-pagination';
+    pagination.style = 'display:flex; align-items:center; justify-content:center; gap:12px; padding:10px 0;';
+
+    let page = 0;
+    const totalPages = Math.max(1, Math.ceil(group.matches.length / MATCHES_PER_PAGE));
+
+    // Only the current page's rows ever get built/inserted into the DOM -
+    // the rest of group.matches stays as plain JS data until paged to.
+    function renderPage() {
+        matchList.innerHTML = '';
+        const start = page * MATCHES_PER_PAGE;
+        group.matches.slice(start, start + MATCHES_PER_PAGE)
+            .forEach(m => matchList.appendChild(renderMatchRow(m, group)));
+
+        pagination.innerHTML = '';
+        if (totalPages > 1) {
+            const btnStyle = (disabled) =>
+                `padding:6px 14px; border-radius:6px; border:1px solid #ddd; background:${disabled ? '#f2f2f2' : '#fff'}; ` +
+                `color:${disabled ? '#aaa' : '#333'}; cursor:${disabled ? 'default' : 'pointer'}; font-size:0.85rem;`;
+
+            const prevBtn = document.createElement('button');
+            prevBtn.textContent = '‹ Prev';
+            prevBtn.disabled = page === 0;
+            prevBtn.style = btnStyle(prevBtn.disabled);
+            prevBtn.onclick = () => { page--; renderPage(); };
+
+            const label = document.createElement('span');
+            label.textContent = `Page ${page + 1} of ${totalPages}`;
+            label.style = 'font-size:0.85rem; color:#666;';
+
+            const nextBtn = document.createElement('button');
+            nextBtn.textContent = 'Next ›';
+            nextBtn.disabled = page >= totalPages - 1;
+            nextBtn.style = btnStyle(nextBtn.disabled);
+            nextBtn.onclick = () => { page++; renderPage(); };
+
+            pagination.append(prevBtn, label, nextBtn);
+        }
+    }
+    renderPage();
+
+    block.appendChild(header);
+    block.appendChild(matchList);
+    block.appendChild(pagination);
+    return block;
+}
+
 function renderPDFMode(groups) {
     const sourceBlocks = document.getElementById('sourceBlocks');
     if (!sourceBlocks) return;
@@ -291,42 +379,9 @@ function renderPDFMode(groups) {
     sourceBlocks.innerHTML = '';
 
     let totalMatches = 0;
-
     groups.forEach((group, bi) => {
         totalMatches += group.matches.length;
-        const block = document.createElement('div');
-        block.className = 'source-block';
-        block.style.animationDelay = `${bi * 0.07}s`;
-
-        const header = document.createElement('div');
-        header.className = 'source-block-header';
-        header.innerHTML = `
-            <div class="source-meta"><div class="tm-label">Source Item #${bi + 1}</div></div>
-            <span class="match-count-badge has-matches">${group.matches.length} matches</span>`;
-
-        const matchList = document.createElement('div');
-        matchList.className = 'match-list';
-
-        group.matches.forEach(m => {
-            const row = document.createElement('div');
-            row.className = 'match-row';
-            // Pass group.all_matches (up to 10) as third arg for PDF use
-            row.onclick = () => openModal(m, group.matches, group.all_matches || group.matches);
-            const imgSrc = getLogoUrl(m.id);
-            const bestSim = Math.max(m.imgSim ?? 0, m.textSim ?? 0);
-            row.innerHTML = `
-                <div class="match-thumb"><img src="${imgSrc}"></div>
-                <div class="match-info">
-                    <div class="match-name">${m.label}</div>
-                    <div class="match-meta">Image: ${m.imgSim}% &nbsp;|&nbsp; Text: ${m.textSim}%</div>
-                </div>
-                <span class="score-pill ${bestSim >= 80 ? 'high' : 'mid'}">${bestSim}%</span>`;
-            matchList.appendChild(row);
-        });
-
-        block.appendChild(header);
-        block.appendChild(matchList);
-        sourceBlocks.appendChild(block);
+        sourceBlocks.appendChild(renderSourceBlock(group, bi));
     });
     document.getElementById('resultsCount').textContent = `${totalMatches} total matches`;
 }
@@ -342,6 +397,15 @@ function openModal(data, uiMatches = [], pdfMatches = []) {
     document.getElementById("modalCompanyName").textContent  = data.label       || "N/A";
     document.getElementById("modalImageSim").textContent     = `${data.imgSim}%`;
     document.getElementById("modalTextSim").textContent      = `${data.textSim}%`;
+    const mismatchEl = document.getElementById("modalMismatchNote");
+    if (mismatchEl) {
+        if (data.textMismatch && data.textMismatch !== 'none') {
+            mismatchEl.hidden = false;
+            mismatchEl.title  = `Checked via ${data.textMismatch === 'ocr' ? 'OCR on the logo image' : 'the registered name'}.`;
+        } else {
+            mismatchEl.hidden = true;
+        }
+    }
     document.getElementById("modalTrademarkNum").textContent = data.serial       || "N/A";
     document.getElementById("modalClass").textContent        = data.modalClass   || "N/A";
     document.getElementById("modalAgent").textContent        = data.modalAgent   || "N/A";

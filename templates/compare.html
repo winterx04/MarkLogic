@@ -13,8 +13,11 @@
   <!-- Background -->
   <div class="image-background"></div>
 
-  <!-- Header Logo: Linked back to the menu route -->
-  <a href="{{ url_for('menu') }}" style="text-decoration:none;color:inherit;">
+  <!-- Header Logo: goes back to wherever you actually came from (admin or
+       menu both link here) - falls back to /menu only if there's no history
+       to go back to (e.g. this page was opened directly via URL). -->
+  <a href="{{ url_for('menu') }}" style="text-decoration:none;color:inherit;"
+     onclick="if (window.history.length > 1) { event.preventDefault(); window.history.back(); }">
     <div class="compare-page-header-logo">
       <div class="compare-page-header-logo-image">
         <img src="{{ url_for('static', filename='icons/logo.png') }}" alt="MarkLogic Logo">
@@ -195,6 +198,10 @@
           </div>
           <div class="detail-modal-right">
             <h2 id="modalCompanyName">Company Name</h2>
+            <div id="modalMismatchNote" hidden
+                 style="color:#b8860b;font-size:13px;font-weight:600;margin-bottom:10px;cursor:help;">
+              ⚠ Style/font match only — the wording is different
+            </div>
             <div class="detail-modal-similarities">
               <div class="detail-similarity-item">
                 <span class="detail-similarity-label">Image Similarity</span>

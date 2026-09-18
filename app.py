@@ -1,6 +1,7 @@
 import io
+import threading
 import cv2
-import secrets 
+import secrets
 import numpy as np
 import faiss
 from flask import Flask, json, jsonify, render_template, request, redirect, url_for, flash, send_file, session, Response, abort
@@ -54,9 +55,29 @@ app.config['MAIL_DEFAULT_SENDER'] = (
 )
 mail = Mail(app)
 
-# --- INITIALIZE THE MODELS ---
+# --- INITIALIZE THE DATABASE, THEN THE MODELS ---
+# Must run before build_logo_index() (which queries trademark_logos) - and
+# unconditionally at module level, not just under `if __name__ == '__main__'`,
+# since a production WSGI server imports this module without ever executing
+# that block.
+db.init_db()
+
 ml_model = MLModel()
-ml_model.build_logo_index() 
+ml_model.build_logo_index()
+
+# Warm PaddleOCR's model load + one-time CPU-graph JIT (measured ~2-12s) in
+# the background so it's paid once at startup instead of on some user's
+# first /compare request - similarity.ocr_text_bytes() has its own
+# lazy-singleton + cache, this just triggers that init early.
+def _warm_ocr():
+    try:
+        buf = io.BytesIO()
+        PILImage.new('RGB', (64, 32), 'white').save(buf, format='PNG')
+        similarity.ocr_text_bytes(buf.getvalue())
+    except Exception:
+        pass
+
+threading.Thread(target=_warm_ocr, daemon=True).start()
 
 # ===============================================================================================
 # AUTHENTICATION DECORATORS & BASIC ROUTES
@@ -278,7 +299,8 @@ def upload_journal(category):
     def generate():
         try:
             raw_data  = []
-            extractor = UltraRobustExtractor() 
+            extractor = UltraRobustExtractor()
+            extractor.set_ml_model(ml_model)  # so each logo (and text) gets embedded during extraction itself
 
             for update in extractor.extract_all(io.BytesIO(file_bytes), start_page=1):
                 status = update.get('status')
@@ -293,29 +315,47 @@ def upload_journal(category):
                 return
 
             inserted = 0
-            for tm in raw_data:
-                if tm.get("block_snapshot") and not tm.get("evidence_snapshot"):
-                    tm["evidence_snapshot"] = tm["block_snapshot"]
+            # One connection reused for the whole batch - opening a fresh
+            # connection per insert_trademark() call measured at ~140ms/record
+            # (mostly connection setup, not the INSERT itself); reusing one
+            # cuts that to ~0.4ms/record, ~350x, for a batch this size.
+            bulk_conn = db.get_db_connection()
+            try:
+                for tm in raw_data:
+                    if tm.get("block_snapshot") and not tm.get("evidence_snapshot"):
+                        tm["evidence_snapshot"] = tm["block_snapshot"]
 
-                tm.update({'category': category, 'batch_number': batch, 'batch_year': year})
+                    tm.update({'category': category, 'batch_number': batch, 'batch_year': year})
 
-                combined_text = f"{tm.get('trademark_name','')} {tm.get('description','')}".strip()
-                if combined_text:
-                    tm['text_embedding'] = ml_model.generate_text_embedding(combined_text)
+                    combined_text = f"{tm.get('trademark_name','')} {tm.get('description','')}".strip()
+                    if combined_text:
+                        tm['text_embedding'] = ml_model.generate_text_embedding(combined_text)
 
-                if tm.get('logo_data'):
-                    tm['logo_embedding'] = ml_model.generate_image_embedding(io.BytesIO(tm['logo_data']))
+                    if tm.get('logo_data') and tm.get('logo_embedding') is None:
+                        tm['logo_embedding'] = ml_model.generate_image_embedding(io.BytesIO(tm['logo_data']))
 
-                db.insert_trademark(tm)
-                inserted += 1
+                    trademark_id = db.insert_trademark(tm, conn=bulk_conn)
 
-                db_percent = int((inserted / total_records) * 100)
-                yield json.dumps({
-                    "status":     "inserting", 
-                    "percentage": db_percent, 
-                    "current":    inserted, 
-                    "total":      total_records
-                }) + "\n"
+                    # A composite mark can have several logo sub-elements (see
+                    # trademark_logos in database.py) - store every one found,
+                    # not just the primary one already sitting in logo_data.
+                    if trademark_id:
+                        for logo in tm.get('logos', []):
+                            db.insert_trademark_logo(
+                                trademark_id, logo['logo_data'], logo.get('logo_embedding'), conn=bulk_conn
+                            )
+
+                    inserted += 1
+
+                    db_percent = int((inserted / total_records) * 100)
+                    yield json.dumps({
+                        "status":     "inserting",
+                        "percentage": db_percent,
+                        "current":    inserted,
+                        "total":      total_records
+                    }) + "\n"
+            finally:
+                bulk_conn.close()
 
             ml_model.build_logo_index()
             yield json.dumps({
@@ -385,13 +425,17 @@ def upload_client_dataset():
 
             else:
                 yield json.dumps({"status": "extracting", "percentage": 50}) + "\n"
-                clean_logo = extract_logo_from_bytes(file_bytes)
-                emb        = ml_model.generate_image_embedding(io.BytesIO(clean_logo))
+                # NOT run through extract_logo_from_bytes() - same reasoning
+                # as the /compare upload path: this is expected to already be
+                # a tight single-logo image, and that heuristic can mistake
+                # the gap between two letters for a logo/text split and chop
+                # the image in half. Use the raw upload directly.
+                emb        = ml_model.generate_image_embedding(io.BytesIO(file_bytes))
                 text_emb   = ml_model.generate_text_embedding(f"{user_file_name} Manual Image Upload")
 
                 db.insert_client_trademark({
                     'file_name':      user_file_name,
-                    'logo_data':      clean_logo,
+                    'logo_data':      file_bytes,
                     'logo_embedding': emb,
                     'text_embedding': text_emb,
                     'applicant_name': user_file_name,
@@ -764,12 +808,21 @@ def perform_comparison():
                     results_from_pdf = update.get('results', [])
             query_items = results_from_pdf
         else:
-            clean_logo_bytes = extract_logo_from_bytes(file_bytes)
+            # NOT run through extract_logo_from_bytes() - that heuristic
+            # looks for the biggest whitespace gap to split "logo" from
+            # "other content" in a wider composite strip, but on an already-
+            # tight single-logo upload (the expected input here, same as
+            # /api/image_search) it can mistake the gap BETWEEN TWO LETTERS
+            # for that boundary and silently chop the image in half (verified:
+            # turned a 4-letter wordmark into just its first 2 letters).
+            # /api/image_search never applied this heuristic and works
+            # correctly - matching that instead of trying to make the
+            # heuristic safer, since it's fundamentally guessing.
             query_items = [{
                 'serial_number':  'IMAGE_UPLOAD',
                 'trademark_name': words_field,
                 'description':    '',
-                'logo_data':      clean_logo_bytes if clean_logo_bytes else file_bytes
+                'logo_data':      file_bytes
             }]
     elif source_category == 'CLIENT':
         query_items = db.get_client_query_items()
@@ -879,14 +932,17 @@ def perform_comparison():
             # A match is included if EITHER score meets the threshold
             if result['include']:
                 match_list.append({
-                    'id':          db_id,
-                    'serial':      row['serial_number'],
-                    'label':       row['trademark_name'] or row['applicant_name'],
-                    'textSim':     round(result['text_sim'] * 100, 2),
-                    'imgSim':      round(result['img_sim']  * 100, 2),
-                    'description': row['description'],
-                    'modalClass':  row['class_indices'],
-                    'modalAgent':  row['agent_details']
+                    'id':           db_id,
+                    'serial':       row['serial_number'],
+                    'label':        row['trademark_name'] or row['applicant_name'],
+                    'textSim':      round(result['text_sim'] * 100, 2),
+                    'imgSim':       round(result['img_sim']  * 100, 2),
+                    # "name" | "ocr" | "none" - lets the UI say *why* a high
+                    # visual score doesn't mean the same word (see similarity.py)
+                    'textMismatch': result['text_mismatch'],
+                    'description':  row['description'],
+                    'modalClass':   row['class_indices'],
+                    'modalAgent':   row['agent_details']
                 })
 
         # Sort by the best individual score (whichever is higher)
@@ -897,10 +953,14 @@ def perform_comparison():
         )
 
         if match_list:
+            # Every match >= 50% (either score), not a fixed count - the
+            # frontend paginates this list client-side so showing all of
+            # them doesn't cost render latency (see compare.js).
+            ui_matches = [m for m in match_list if max(m['imgSim'], m['textSim']) >= 50]
             final_results.append({
                 'query_serial': q.get('serial_number') or q_name_raw or f"Item {i+1}",
-                'matches':      match_list[:3],   # top 3 for UI display
-                'all_matches':  match_list[:20]   # up to {n} for PDF
+                'matches':      ui_matches,
+                'all_matches':  match_list[:20]   # up to {n} for PDF - unchanged
             })
 
     cur.close()
@@ -1205,8 +1265,7 @@ def get_evidence(trademark_id):
     return "Not found", 404
 
 if __name__ == '__main__':
-    db.init_db()
-        # Get host and port from environment, fallback to defaults
+    # Get host and port from environment, fallback to defaults
     host = os.getenv("FLASK_RUN_HOST", "127.0.0.1")
     port = int(os.getenv("FLASK_RUN_PORT", 5000))
     print(f"Starting Flask on {host}:{port}")

@@ -3,19 +3,28 @@ name = "marklogic"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 dependencies = [
     "faiss-cpu==1.12.0",
-    "fitz==0.0.1.dev2",
     "flask==3.1.3",
     "flask-mail==0.10.0",
     "imagehash==4.3.2",
-    "numpy==2.4.3",
-    "opencv-python==4.11.0.86",
+    "jellyfish>=1.2.1",
+    "numpy",
+    # ultralytics (YOLO) hard-requires opencv-python; paddleocr hard-requires
+    # opencv-contrib-python. Both packages install into the same `cv2`
+    # namespace and whichever installs last silently wins - pinning both to
+    # the identical upstream OpenCV release keeps that "winner" functionally
+    # equivalent instead of a version drifting on future `uv sync`.
+    "opencv-contrib-python==4.10.0.84",
+    "opencv-python==4.10.0.84",
+    "paddleocr==3.7.0",
+    "paddlepaddle",
     "pandas==3.0.1",
     "pdfplumber==0.11.1",
     "pillow==12.1.1",
     "psycopg2-binary==2.9.10",
+    "pymupdf",
     "python-dotenv==1.2.2",
     "reportlab==4.2.0",
     "scipy==1.17.1",
@@ -26,4 +35,4 @@ dependencies = [
 ]
 
 [tool.uv]
-required-environments = ["sys_platform == 'win32' and platform_machine == 'AMD64'"]
+environments = ["sys_platform == 'win32' and platform_machine == 'AMD64'"]
