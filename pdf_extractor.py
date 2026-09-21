@@ -49,12 +49,75 @@ except Exception:
     SentenceTransformer = None
     _HAS_SENTE_TRANS = False
 
-# Progress bar for extraction 
+# Progress bar for extraction
 try:
     from tqdm import tqdm
     _HAS_TQDM = True
 except ImportError:
     _HAS_TQDM = False
+
+try:
+    from paddleocr import PaddleOCR
+    _HAS_PADDLEOCR = True
+except Exception:
+    PaddleOCR = None
+    _HAS_PADDLEOCR = False
+
+_block_ocr_engine = None
+
+
+def _get_block_ocr_engine():
+    """Lazy PaddleOCR engine for the block-level OCR cross-validation
+    check (see UltraRobustExtractor.validate_fields_with_ocr) - kept
+    separate from similarity.py's engine (medium, already eval-validated
+    for the Compare feature's font-mismatch guard) so this never risks
+    that. Uses the TINY model: measured 32.5x faster than medium with
+    byte-identical text output on every one of 16 real field crops tested
+    - no accuracy tradeoff found for this kind of short-line/label read."""
+    global _block_ocr_engine
+    if _block_ocr_engine is None:
+        if not _HAS_PADDLEOCR:
+            _block_ocr_engine = False
+        else:
+            try:
+                _block_ocr_engine = PaddleOCR(
+                    use_doc_orientation_classify=False,
+                    use_doc_unwarping=False,
+                    use_textline_orientation=False,
+                    enable_mkldnn=False,
+                    text_detection_model_name="PP-OCRv6_tiny_det",
+                    text_recognition_model_name="PP-OCRv6_tiny_rec",
+                )
+            except Exception:
+                _block_ocr_engine = False
+    return _block_ocr_engine
+
+
+def _normalize_for_ocr_check(text):
+    return re.sub(r'[^A-Z0-9]', '', (text or "").upper())
+
+
+def _field_found_in_ocr(field_value, ocr_blob_normalized, min_word_len=3, min_fraction=0.6):
+    """Fuzzy 'is this field's value actually present in the OCR'd block
+    text' check - word-level containment rather than an exact substring
+    match, since OCR line-wrapping/spacing differs from how pdfplumber
+    joins lines. Only checks words of min_word_len+ characters (short
+    tokens like "OF"/"NO" are too common to be meaningful evidence either
+    way).
+
+    Tokenize the ORIGINAL field value first, THEN normalize each token -
+    not the other way around. Normalizing the whole string first strips
+    every space, so re.findall on it returns one giant word instead of
+    real tokens (verified: this exact bug produced a false-positive
+    "not found" warning on a genuinely correct, cleanly-OCR'd agent field
+    - the concatenated field-value "word" obviously never matched
+    anything in the OCR blob)."""
+    words = [w.upper() for w in re.findall(r'[A-Za-z0-9]{%d,}' % min_word_len, field_value or "")]
+    if not words:
+        return True  # nothing meaningful to check - don't flag it
+    found = sum(1 for w in words if w in ocr_blob_normalized)
+    return (found / len(words)) >= min_fraction
+
 # -------------------------
 # MLModel
 # -------------------------
@@ -157,9 +220,13 @@ class MLModel:
 # UltraRobustExtractor
 # -------------------------
 class UltraRobustExtractor:
-    def __init__(self, debug=False, yolo_model_path="models/best_colab2.pt"):
+    def __init__(self, debug=False, yolo_model_path="models/best_colab2.pt", enable_ocr_validation=True):
         self.debug = debug
         self.ml = None
+        # OCR cross-validation safety net (see validate_fields_with_ocr) -
+        # cheap with the tiny model (measured ~0.2-0.3s/block worth of
+        # text), on by default; pass False to skip it entirely.
+        self.enable_ocr_validation = enable_ocr_validation
 
         # Prefix (TM, JV, etc.) is OPTIONAL - plenty of real serial numbers in
         # this journal are bare digits with no letter prefix at all (e.g.
@@ -174,7 +241,13 @@ class UltraRobustExtractor:
             r"September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\b",
             re.IGNORECASE
         )
-        self.class_header_pattern = re.compile(r"CLASS\s*:\s*([\d,\s]+)", re.IGNORECASE | re.MULTILINE)
+        # Capture group excludes \n/\r deliberately - [\d,\s]+ used to
+        # match across the line break into the NEXT line's serial number
+        # (e.g. real text "CLASS : 34\n2015002306 27 February 2015" was
+        # captured as class_indices "34\n2015002306 27", silently
+        # absorbing the serial number's leading digits). [ \t\d,]+ stays
+        # on the CLASS line only.
+        self.class_header_pattern = re.compile(r"CLASS\s*:\s*([ \t\d,]+)", re.IGNORECASE | re.MULTILINE)
         # Only present on Madrid Protocol / international-route filings -
         # absent on domestic filings, which is expected, not an error.
         self.intl_reg_number_pattern = re.compile(
@@ -205,6 +278,49 @@ class UltraRobustExtractor:
 
     def set_ml_model(self, ml):
         self.ml = ml
+
+    def validate_fields_with_ocr(self, snapshot_bytes, fields):
+        """Cross-checks the text-layer-extracted field VALUES against an
+        independent OCR read of the same block image. The text layer
+        (pdfplumber) is still authoritative - it reads exact embedded PDF
+        text, no recognition risk - this exists purely to catch a
+        DIFFERENT class of bug: find_blocks()'s boundary logic grabbing
+        the wrong region entirely, which the text layer would then read
+        perfectly accurately but for the WRONG field. Returns a list of
+        warning strings (empty if everything checks out, OCR wasn't
+        available, or validation is disabled)."""
+        if not self.enable_ocr_validation or not (_HAS_CV2 and snapshot_bytes):
+            return []
+        engine = _get_block_ocr_engine()
+        if not engine:
+            return []
+
+        try:
+            img = cv2.imdecode(np.frombuffer(snapshot_bytes, np.uint8), cv2.IMREAD_COLOR)
+            if img is None:
+                return []
+            ocr_words = []
+            for res in engine.predict(img):
+                texts  = res.get('rec_texts')  or []
+                scores = res.get('rec_scores') or []
+                ocr_words.extend(t for t, s in zip(texts, scores) if s >= 0.5)
+            ocr_blob = _normalize_for_ocr_check(" ".join(ocr_words))
+        except Exception as e:
+            self.log(f"OCR cross-validation failed: {e}")
+            return []
+
+        warnings = []
+        checks = {
+            "serial_number":  fields.get("serial_number"),
+            "class_indices":  fields.get("class_indices"),
+            "agent_details":  fields.get("agent_details"),
+            "applicant_name": fields.get("applicant_name"),
+        }
+        for field_name, value in checks.items():
+            if value and not _field_found_in_ocr(value, ocr_blob):
+                warnings.append(f"{field_name} not found in block's own OCR text - possible block-boundary mismatch")
+                self.log(f"WARNING: OCR cross-validation - {field_name}='{value[:40]}' not found in block OCR text")
+        return warnings
 
     # =====================================================
     # LOGO HELPERS (MUST be inside class)
@@ -273,7 +389,7 @@ class UltraRobustExtractor:
 
         try:
             # Render at high resolution
-            header_img = page.within_bbox(logo_zone_bbox).to_image(resolution=300)
+            header_img = page.within_bbox(logo_zone_bbox).to_image(resolution=self.LOGO_RENDER_DPI)
             img = header_img.original.convert("RGB")
             arr = np.array(img)
             
@@ -304,6 +420,16 @@ class UltraRobustExtractor:
     # was merged into logo, so this is just the one id now, not a pair.
     LOGO_CLASS_IDS = {0}  # 0=logo
 
+    # DPI for rendering a record block before logo detection/cropping.
+    # YOLO itself resizes to its own trained input size regardless, but the
+    # final logo crop used for CLIP/phash/ORB embedding is cut straight
+    # from this render - so this is the resolution the actual similarity
+    # comparison runs on. Raised from 300 for accuracy per explicit
+    # priority (logo/similarity accuracy over extraction speed) - measured
+    # cost is only ~0.2s/block extra at 600 vs 300 (0.57s vs 0.36s avg on
+    # a real page), i.e. ~3 minutes added across a ~1000-record batch.
+    LOGO_RENDER_DPI = 600
+
     @staticmethod
     def _iou(a, b):
         ax0, ay0, ax1, ay1 = a
@@ -323,7 +449,7 @@ class UltraRobustExtractor:
             their own crop/embedding rather than averaging them into one."""
             if not self.yolo: return []
             try:
-                img_obj = page.within_bbox(block_bbox).to_image(resolution=300)
+                img_obj = page.within_bbox(block_bbox).to_image(resolution=self.LOGO_RENDER_DPI)
                 img     = img_obj.original.convert("RGB")
                 img_w, img_h = img.size
                 results = self.yolo(img, verbose=False, conf=0.15)
@@ -620,19 +746,16 @@ class UltraRobustExtractor:
         if m:
             fields["class_indices"] = m.group(1).strip()
 
-        for line in lines[:20]:
-            if "translation" in line.lower():
-                quote_match = re.search(r'["\'](.*?)["\']', line)
-                if quote_match:
-                    fields["trademark_name"] = quote_match.group(1).strip()
-                    break
-            elif "transliteration" in line.lower():
-                trans_match = re.search(r"transliteration:\s*(.+)", line, re.IGNORECASE)
-                if trans_match:
-                    name_part = trans_match.group(1)
-                    name_part = re.split(r"\s+(?:Registration|The|This|Class)", name_part)[0]
-                    fields["trademark_name"] = name_part.strip()
-                    break
+        # trademark_name is deliberately NOT populated from "Mark
+        # translation:"/"Mark transliteration:" lines - these journals have
+        # no genuine "official trademark name" field at all, and a
+        # translation is just the mark's English MEANING, not its actual
+        # name (confirmed: "Mark translation: Duru means 'pure' in
+        # english." was captured as trademark_name="pure", when the real
+        # word on the mark is "Duru" - misleading either way). Leaving
+        # trademark_name empty lets the UI's own `trademark_name or
+        # applicant_name` fallback show the applicant name instead,
+        # consistent with every other record.
 
         agent_idx = len(lines)
         for i, line in enumerate(lines):
@@ -698,15 +821,11 @@ class UltraRobustExtractor:
 
         desc = fields["description"]
 
-        if not fields["trademark_name"] and desc:
-            match = re.search(r'Mark\s+translation:\s*["\']([^"\']+)["\']', desc)
-            if match:
-                fields["trademark_name"] = match.group(1).strip()
-            else:
-                match = re.search(r"Mark\s+transliteration:\s*([A-Za-z\s]+?)(?=\s*[A-Z]|\.|$)", desc)
-                if match:
-                    fields["trademark_name"] = match.group(1).strip()
-
+        # trademark_name is NOT populated from "Mark translation:"/"Mark
+        # transliteration:" here either - see the comment where this used
+        # to run earlier in this function for why. Still strip the
+        # boilerplate out of the description text below, just don't use
+        # it as a name source.
         desc = re.sub(r"Mark\s+translation:[^\.]+\.\s*", "", desc)
         desc = re.sub(r"Mark\s+transliteration:[^\.]+\.\s*", "", desc)
         desc = re.sub(r"Mark\s+translation:[^A-Z]+", "", desc)
@@ -719,8 +838,15 @@ class UltraRobustExtractor:
         if fields["registration_date"]:
             desc = desc.replace(fields["registration_date"], "")
 
+        # Strip the main "CLASS : 29,30" header (redundant with
+        # class_indices) but deliberately KEEP bare "CLASS 29"/"CLASS 30"
+        # sub-headers - a multi-class record prints each class's own goods
+        # list under its own sub-header (see real DURU record: "CLASS 29
+        # Meat, fish... CLASS 30 Coffee, cocoa..."). Stripping these (as
+        # this used to do) merges both classes' goods into one
+        # indistinguishable blob, losing exactly the class-to-goods
+        # mapping a multi-class record needs.
         desc = re.sub(r"CLASS\s*:\s*[\d,\s]+", "", desc, flags=re.IGNORECASE)
-        desc = re.sub(r"\bCLASS\s+\d+\b", "", desc)
 
         desc = re.sub(r"\s+", " ", desc).strip()
         desc = desc.lstrip(";:,. ")
@@ -905,6 +1031,47 @@ class UltraRobustExtractor:
                 last = y
         return last
 
+    def _render_composite_snapshot(self, block_page, lookback_regions, lookahead_regions, resolution=150):
+        """Renders the FULL visual content actually used to build `fields`,
+        including any pages pulled in by cross-page stitching (see the
+        lookahead/lookback logic below) - stacked vertically in reading
+        order. Without this, OCR cross-validation would check fields
+        against only this page's own bbox and wrongly flag a record whose
+        agent/applicant genuinely live on the NEXT page (confirmed: a
+        record correctly stitched across pages 9->10 still got flagged
+        because the snapshot only showed page 9)."""
+        images = []
+        for pg, bbox in lookback_regions:
+            try:
+                region = pg.crop(bbox) if bbox else pg
+                images.append(region.to_image(resolution=resolution).original.convert("RGB"))
+            except Exception:
+                pass
+        try:
+            images.append(block_page.to_image(resolution=resolution).original.convert("RGB"))
+        except Exception:
+            pass
+        for pg, bbox in lookahead_regions:
+            try:
+                region = pg.crop(bbox) if bbox else pg
+                images.append(region.to_image(resolution=resolution).original.convert("RGB"))
+            except Exception:
+                pass
+
+        if not images:
+            return None
+        if len(images) == 1:
+            return images[0]
+
+        width = max(im.width for im in images)
+        total_height = sum(im.height for im in images)
+        composite = Image.new("RGB", (width, total_height), "white")
+        y = 0
+        for im in images:
+            composite.paste(im, (0, y))
+            y += im.height
+        return composite
+
     def extract_from_block(self, page, block_info, page_num, pages_to_process=None, page_index=None):
         bbox = block_info["bbox"]
 
@@ -926,6 +1093,13 @@ class UltraRobustExtractor:
                 return None
             idx = page_index + offset
             return pages_to_process[idx] if 0 <= idx < len(pages_to_process) else None
+
+        # Tracks which extra page regions (if any) got stitched into `text`
+        # below, so the OCR cross-validation snapshot can be built from the
+        # SAME regions the text-layer extraction actually used - not just
+        # this page's own bbox.
+        lookback_regions  = []
+        lookahead_regions = []
 
         # The applicant name doesn't look like a real company name — this
         # journal draws a closing separator per PAGE, not per logical entry,
@@ -958,6 +1132,7 @@ class UltraRobustExtractor:
                         stitched_fields, stitched_completeness = self.parse_fields(stitched_text, stitched_lines)
                         if self._looks_like_applicant_name(stitched_fields["applicant_name"]):
                             text, lines, fields, completeness = stitched_text, stitched_lines, stitched_fields, stitched_completeness
+                            lookahead_regions = [(nxt, (0, 0, nxt.width, cutoff))]
                             break
                 if next_cy is not None:
                     break  # a genuine next entry starts here — nothing more of ours to find
@@ -971,6 +1146,7 @@ class UltraRobustExtractor:
         # absorb text that comes AFTER it — never another entry's own content.
         if self.SERIES_MARKER.search(text):
             prefix = ""
+            new_lookback_regions = []
             for offset in range(1, self.MAX_LOOKBACK_PAGES + 1):
                 prev = page_at(-offset)
                 if prev is None:
@@ -978,12 +1154,14 @@ class UltraRobustExtractor:
                 prev_blocks = self.find_blocks(prev)
                 if prev_blocks:
                     prev_last_y1 = prev_blocks[-1]["bbox"][3]
+                    prev_bbox = (0, prev_last_y1, prev.width, prev.height)
                     try:
                         # crop(), not within_bbox() - same reasoning as above.
-                        chunk = prev.crop((0, prev_last_y1, prev.width, prev.height)).extract_text()
+                        chunk = prev.crop(prev_bbox).extract_text()
                     except Exception:
                         chunk = None
                     prefix = self._strip_page_boilerplate(chunk) + "\n" + prefix
+                    new_lookback_regions.insert(0, (prev, prev_bbox))
                     break  # found the true previous entry's own end — stop here
                 else:
                     try:
@@ -991,7 +1169,9 @@ class UltraRobustExtractor:
                     except Exception:
                         chunk = None
                     prefix = self._strip_page_boilerplate(chunk) + "\n" + prefix
+                    new_lookback_regions.insert(0, (prev, None))
             if prefix.strip():
+                lookback_regions = new_lookback_regions
                 stitched_text = prefix + "\n" + text
                 stitched_lines = [l.strip() for l in stitched_text.split("\n") if l.strip()]
                 stitched_fields, stitched_completeness = self.parse_fields(stitched_text, stitched_lines)
@@ -1032,12 +1212,14 @@ class UltraRobustExtractor:
         logo_emb = logos[0]["logo_embedding"] if logos else None
 
         try:
-            block_img = block_page.to_image(resolution=150)
+            composite_img = self._render_composite_snapshot(block_page, lookback_regions, lookahead_regions, resolution=150)
             buf = io.BytesIO()
-            block_img.original.save(buf, format="PNG")
+            composite_img.save(buf, format="PNG")
             snapshot = buf.getvalue()
         except Exception:
             snapshot = None
+
+        validation_warnings = self.validate_fields_with_ocr(snapshot, fields)
 
         text_emb = None
         if self.ml:
@@ -1064,7 +1246,8 @@ class UltraRobustExtractor:
             "logos": logos,
             "text_embedding": text_emb,
             "block_snapshot": snapshot,
-            "completeness": completeness
+            "completeness": completeness,
+            "validation_warnings": validation_warnings
         }
 
         return result
