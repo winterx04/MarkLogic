@@ -4,6 +4,33 @@ import numpy as np
 from PIL import Image
 import database as db
 
+def pad_to_square_rgb(image, fill=255):
+    """Composite onto a white background and letterbox to a square canvas
+    before handing off to CLIP.
+
+    CLIP's own preprocessor resizes to a fixed shortest-edge then
+    center-crops to a square - measured on real trademark logo crops
+    (routinely 2:1 to 6:1 wide) this silently discards 40-85% of the
+    logo's width before the model ever sees it, which is a real driver of
+    both false positives (unrelated logos whose surviving center strips
+    happen to align) and crop-sensitivity (the same logo cropped with
+    different margins keeps a different strip). Padding to a square first
+    means CLIP's center-crop has nothing left to cut off. Validated via
+    eval/eval_similarity.py-style rescoring on the bootstrap pairs:
+    FP 78->59, confident-precision 0.619->0.650, recall unchanged at 100%."""
+    rgba = image.convert("RGBA")
+    bg = Image.new("RGBA", rgba.size, (fill, fill, fill, 255))
+    bg.paste(rgba, mask=rgba.split()[-1])
+    rgb = bg.convert("RGB")
+    w, h = rgb.size
+    side = max(w, h)
+    if side == 0:
+        return rgb
+    canvas = Image.new("RGB", (side, side), (fill, fill, fill))
+    canvas.paste(rgb, ((side - w) // 2, (side - h) // 2))
+    return canvas
+
+
 class MLModel:
     def __init__(self, image_model_name='clip-ViT-B-32', text_model_name='all-MiniLM-L6-v2'):
         print("Loading ML models...")
@@ -11,15 +38,15 @@ class MLModel:
         self.image_model = SentenceTransformer(image_model_name)
         # MiniLM for text (384 dimensions)
         self.text_model = SentenceTransformer(text_model_name)
-        
+
         self.logo_index = None
-        self.id_map = [] 
+        self.id_map = []
         print("ML models loaded successfully.")
 
     def generate_image_embedding(self, image_file_stream):
         """Converts an image file stream into a NORMALIZED vector embedding."""
         try:
-            image = Image.open(image_file_stream).convert("RGB")
+            image = pad_to_square_rgb(Image.open(image_file_stream))
             # Returns a list, we take the first element [0]
             embedding = self.image_model.encode([image], convert_to_numpy=True, show_progress_bar=False)[0]
             

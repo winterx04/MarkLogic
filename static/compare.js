@@ -172,16 +172,24 @@ function removeFile(e) {
 /**
  * API EXECUTION (THE CORE)
  */
+function setCompareProgress(percentage, text) {
+    const progressBar     = document.getElementById("progressBar");
+    const progressPercent = document.getElementById("progressPercent");
+    const progressText    = document.getElementById("progressText");
+    if (progressBar)     progressBar.style.width   = `${percentage}%`;
+    if (progressPercent) progressPercent.innerText = `${percentage}%`;
+    if (progressText)    progressText.innerText    = text;
+}
+
 async function runCompare() {
     const loadingSection = document.getElementById("loadingSection");
     const resultsSection = document.getElementById("resultsSection");
-    const progressFill   = document.querySelector(".progress-fill");
     const resetBtn       = document.getElementById("resetBtn");
 
     resultsSection.classList.remove("show");
     loadingSection.classList.add("show");
-    progressFill.style.width = "30%";
-    resetBtn.style.display   = "none";
+    resetBtn.style.display = "none";
+    setCompareProgress(0, "Starting...");
 
     const formData = new FormData();
     if (selectedSource === 'upload') {
@@ -199,20 +207,62 @@ async function runCompare() {
             method: "POST",
             body: formData
         });
+        if (!response.ok) throw new Error("Comparison request failed");
 
-        const results = await response.json();
-        if (!response.ok || results.error) throw new Error(results.error || "Comparison failed");
+        // NDJSON stream (same pattern as the journal-upload progress in
+        // dataset.js) - each line is one JSON status update, so progress
+        // reflects what the server is ACTUALLY doing right now, not a
+        // fixed-duration animation that can't tell you if it's stuck.
+        const reader  = response.body.getReader();
+        const decoder = new TextDecoder();
+        let leftover  = "";
+        let results   = null;
+        let errorMsg  = null;
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            const combined = leftover + decoder.decode(value, { stream: true });
+            const lines    = combined.split("\n");
+            leftover       = lines.pop();
+
+            for (const line of lines) {
+                if (!line.trim()) continue;
+                let data;
+                try { data = JSON.parse(line); } catch (e) { continue; }
+
+                if (data.status === "preparing") {
+                    setCompareProgress(2, data.message || "Preparing...");
+                } else if (data.status === "extracting") {
+                    setCompareProgress(data.percentage, `Reading uploaded PDF: page ${data.current_page}`);
+                } else if (data.status === "embedding") {
+                    setCompareProgress(50, data.message || "Computing embeddings...");
+                } else if (data.status === "scoring") {
+                    const detail = data.candidate_total
+                        ? ` (checking match ${data.candidate}/${data.candidate_total})`
+                        : "";
+                    setCompareProgress(data.percentage, `Comparing: ${data.current} of ${data.total}${detail}`);
+                } else if (data.status === "complete") {
+                    results = data.results;
+                } else if (data.status === "error") {
+                    errorMsg = data.message;
+                }
+            }
+        }
+
+        if (errorMsg) throw new Error(errorMsg);
+        if (!results) throw new Error("Comparison ended without a result - the connection may have dropped.");
 
         lastComparisonResults = results;
+        setCompareProgress(100, "Done");
 
-        progressFill.style.width = "100%";
         setTimeout(() => {
             loadingSection.classList.remove("show");
             renderResults(results);
             resultsSection.classList.add("show");
             resetBtn.style.display = "inline-flex";
             resultsSection.scrollIntoView({ behavior: 'smooth' });
-        }, 500);
+        }, 300);
 
     } catch (error) {
         loadingSection.classList.remove("show");
@@ -298,12 +348,21 @@ function renderMatchRow(m, group) {
     const mismatchNote = m.textMismatch && m.textMismatch !== 'none'
         ? `<div class="match-mismatch-note" title="High visual score is driven by shared font/style - the actual wording is different (checked via ${m.textMismatch === 'ocr' ? 'OCR on the logo image' : 'the registered name'}).">⚠ Style/font match only - wording differs</div>`
         : '';
+    // "review" tier: confidence (CLIP) says this is a real hit, but the
+    // classical corroboration checks (phash/ORB/color) couldn't confirm
+    // it - could be a genuine edge case they weren't designed for (see
+    // similarity.py), so it's surfaced for a human to check rather than
+    // either hidden or confidently mislabeled.
+    const reviewNote = m.matchTier === 'review'
+        ? `<div class="match-review-note" title="The AI's visual confidence is high, but classical image checks (shape/color matching) couldn't independently confirm it - this can happen for legitimate reasons (e.g. a cropped or partial image). Worth a manual look.">🔍 AI confidence high, visual checks inconclusive - please verify</div>`
+        : '';
     row.innerHTML = `
         <div class="match-thumb"><img src="${imgSrc}" loading="lazy"></div>
         <div class="match-info">
             <div class="match-name">${m.label}</div>
             <div class="match-meta">Image: ${m.imgSim}% &nbsp;|&nbsp; Text: ${m.textSim}%</div>
             ${mismatchNote}
+            ${reviewNote}
         </div>
         <span class="score-pill ${bestSim >= 80 ? 'high' : 'mid'}">${bestSim}%</span>`;
     return row;
@@ -405,6 +464,10 @@ function openModal(data, uiMatches = [], pdfMatches = []) {
         } else {
             mismatchEl.hidden = true;
         }
+    }
+    const reviewEl = document.getElementById("modalReviewNote");
+    if (reviewEl) {
+        reviewEl.hidden = data.matchTier !== 'review';
     }
     document.getElementById("modalTrademarkNum").textContent = data.serial       || "N/A";
     document.getElementById("modalClass").textContent        = data.modalClass   || "N/A";

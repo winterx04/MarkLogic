@@ -129,16 +129,6 @@
       <button class="compare-page-button" id="compareBtn" disabled onclick="runCompare()">
         Compare
       </button>
-          <!-- Progress Container (Same IDs and classes as Dataset) -->
-    <div id="progressContainer" style="display: none;">
-        <div class="progress-info-row">
-            <span id="progressText">Analyzing...</span>
-            <span id="progressPercent">0%</span>
-        </div>
-        <div id="progressBarWrapper">
-            <div id="progressBar"></div>
-        </div>
-    </div>
       <button class="compare-page-button reset-btn" id="resetBtn" onclick="resetCompare()" style="display:none;">
         ↺ Reset
       </button>
@@ -147,13 +137,22 @@
     <!-- Popup notification -->
     <div class="compare-page-popup" id="comparePopup"></div>
 
-    <!-- Loading -->
+    <!-- Loading: real backend progress via NDJSON stream from
+         /api/perform_comparison (see runCompare() in compare.js) - not a
+         fake CSS animation, so the percentage/status text actually
+         reflects whether the server is working or stuck. -->
     <div class="loading-section" id="loadingSection">
       <h2 class="loading-title">Comparing Trademarks</h2>
-      <div class="progress-bar-wrapper">
-        <div class="progress-bar"><div class="progress-fill"></div></div>
+      <div id="progressContainer">
+          <div class="progress-info-row">
+              <span id="progressText">Starting...</span>
+              <span id="progressPercent">0%</span>
+          </div>
+          <div id="progressBarWrapper">
+              <div id="progressBar"></div>
+          </div>
       </div>
-      <p class="loading-text">Processing comparison results...</p>
+      <p class="loading-text">If this stays at the same percentage for a while without moving, something may be stuck.</p>
     </div>
 
     <!-- RESULTS SECTION -->
@@ -201,6 +200,11 @@
             <div id="modalMismatchNote" hidden
                  style="color:#b8860b;font-size:13px;font-weight:600;margin-bottom:10px;cursor:help;">
               ⚠ Style/font match only — the wording is different
+            </div>
+            <div id="modalReviewNote" hidden
+                 title="The AI's visual confidence is high, but classical image checks (shape/color matching) couldn't independently confirm it - this can happen for legitimate reasons (e.g. a cropped or partial image). Worth a manual look."
+                 style="color:#6458F0;font-size:13px;font-weight:600;margin-bottom:10px;cursor:help;">
+              🔍 AI confidence high, visual checks inconclusive — please verify manually
             </div>
             <div class="detail-modal-similarities">
               <div class="detail-similarity-item">

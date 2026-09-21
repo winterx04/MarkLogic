@@ -14,7 +14,7 @@ from PIL import Image as PILImage
 import traceback
 import re
 import database as db 
-from ml_utils import MLModel
+from ml_utils import MLModel, pad_to_square_rgb
 from pdf_extractor import UltraRobustExtractor, extract_all 
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, Table, TableStyle
@@ -753,219 +753,283 @@ def edge_similarity(img_bytes1, img_bytes2):
 
 @app.route('/api/perform_comparison', methods=['POST'])
 def perform_comparison():
+    # Streamed as NDJSON (same convention as /upload-journal - see
+    # generate() there) so the frontend can show REAL progress instead of
+    # a fake CSS animation: PDF extraction was already yielding per-page
+    # progress internally, it was just being silently discarded (only
+    # "extraction_complete" was ever read out of that generator before).
     file            = request.files.get('file')
     source_category = request.form.get('source_category', 'UPLOAD').upper()
     target          = request.form.get('target', 'MYIPO').upper()
     words_field     = request.form.get('words', '').strip()
 
-    if target == 'CLIENT':
-        db_data       = db.get_all_client_embeddings()
-        table_name    = "client_trademarks"
-        query_columns = """
-            id,
-            applicant_name as trademark_name,
-            file_name as serial_number,
-            applicant_name,
-            description,
-            NULL as class_indices,
-            'Client Record' as agent_details,
-            logo_data
-        """
-    else:
-        db_data       = db.get_all_embeddings(category=target)
-        table_name    = "trademarks"
-        query_columns = """
-            id, trademark_name, serial_number, applicant_name, description,
-            class_indices, agent_details, logo_data
-        """
+    if source_category == 'UPLOAD' and not file:
+        return jsonify({'error': 'No file provided'}), 400
 
-    if not db_data or not db_data['ids']:
-        return jsonify({'error': f'Target {target} database is empty'}), 400
-
-    db_logo_vectors = np.vstack(db_data['logo']).astype('float32')
-    db_text_vectors = np.vstack(db_data['text']).astype('float32')
-    faiss.normalize_L2(db_logo_vectors)
-    faiss.normalize_L2(db_text_vectors)
-
-    image_index = faiss.IndexFlatIP(similarity.IMAGE_EMBEDDING_DIM)
-    text_index  = faiss.IndexFlatIP(similarity.TEXT_EMBEDDING_DIM)
-    image_index.add(db_logo_vectors)
-    text_index.add(db_text_vectors)
-
-    query_items = []
+    file_bytes = None
+    filename   = ''
     if source_category == 'UPLOAD':
-        if not file:
-            return jsonify({'error': 'No file provided'}), 400
         file.seek(0)
         file_bytes = file.read()
         filename   = file.filename.lower()
 
-        if filename.endswith('.pdf'):
-            results_from_pdf = []
-            extractor        = UltraRobustExtractor()
-            for update in extractor.extract_all(io.BytesIO(file_bytes), start_page=1):
-                if update.get('status') == 'extraction_complete':
-                    results_from_pdf = update.get('results', [])
-            query_items = results_from_pdf
-        else:
-            # NOT run through extract_logo_from_bytes() - that heuristic
-            # looks for the biggest whitespace gap to split "logo" from
-            # "other content" in a wider composite strip, but on an already-
-            # tight single-logo upload (the expected input here, same as
-            # /api/image_search) it can mistake the gap BETWEEN TWO LETTERS
-            # for that boundary and silently chop the image in half (verified:
-            # turned a 4-letter wordmark into just its first 2 letters).
-            # /api/image_search never applied this heuristic and works
-            # correctly - matching that instead of trying to make the
-            # heuristic safer, since it's fundamentally guessing.
-            query_items = [{
-                'serial_number':  'IMAGE_UPLOAD',
-                'trademark_name': words_field,
-                'description':    '',
-                'logo_data':      file_bytes
-            }]
-    elif source_category == 'CLIENT':
-        query_items = db.get_client_query_items()
-    else:
-        query_items = db.get_query_items_by_category(source_category)
+    def generate():
+        try:
+            yield json.dumps({"status": "preparing", "message": "Loading target database..."}) + "\n"
 
-    if not query_items:
-        return jsonify({'error': 'No items found in the selected source'}), 400
-
-    all_texts       = []
-    all_logo_images = []
-    logo_mapping    = []
-
-    for i, q in enumerate(query_items):
-        txt = f"{q.get('trademark_name','') or ''} {q.get('description','') or ''}".strip()
-        all_texts.append(txt if (txt and txt.lower() != 'n/a') else "empty")
-        if q.get('logo_data'):
-            try:
-                img = PILImage.open(io.BytesIO(q['logo_data'])).convert("RGB")
-                all_logo_images.append(img)
-                logo_mapping.append(i)
-            except:
-                pass
-
-    text_embeddings = ml_model.text_model.encode(all_texts, batch_size=32, convert_to_numpy=True)
-    faiss.normalize_L2(text_embeddings)
-    D_text, I_text = text_index.search(text_embeddings.astype('float32'), 10)
-
-    logo_results = {}
-    if all_logo_images:
-        logo_embeddings = ml_model.image_model.encode(all_logo_images, batch_size=32, convert_to_numpy=True)
-        faiss.normalize_L2(logo_embeddings)
-        D_logo, I_logo = image_index.search(logo_embeddings.astype('float32'), 20)
-        for i, query_idx in enumerate(logo_mapping):
-            logo_results[query_idx] = (D_logo[i], I_logo[i])
-
-    final_results = []
-    conn = db.get_db_connection()
-    cur  = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-
-    all_potential_ids = set()
-    for i, _ in enumerate(query_items):
-        for idx in I_text[i]:
-            if idx != -1: all_potential_ids.add(db_data['ids'][idx])
-        if i in logo_results:
-            for idx in logo_results[i][1]:
-                if idx != -1: all_potential_ids.add(db_data['ids'][idx])
-
-    master_db_lookup = {}
-    if all_potential_ids:
-        cur.execute(
-            f"SELECT {query_columns} FROM {table_name} WHERE id = ANY(%s)",
-            (list(all_potential_ids),)
-        )
-        master_db_lookup = {row['id']: row for row in cur.fetchall()}
-
-    for i, q in enumerate(query_items):
-        match_list = []
-        q_name_raw = (
-            q.get('trademark_name') or
-            q.get('applicant_name') or
-            q.get('serial_number') or
-            ""
-        ).strip()
-        q_name = similarity.normalize(q_name_raw)
-
-        q_logo    = q.get('logo_data')
-        q_has_img = False
-        if q_logo:
-            nparr = np.frombuffer(q_logo, np.uint8)
-            img   = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
-            if img is not None and np.std(img) > 5:
-                q_has_img = True
-
-        t_sim_map = {
-            db_data['ids'][idx]: float(D_text[i][rank])
-            for rank, idx in enumerate(I_text[i]) if idx != -1
-        }
-        l_sim_map = {}
-        if i in logo_results:
-            l_sim_map = {
-                db_data['ids'][idx]: float(logo_results[i][0][rank])
-                for rank, idx in enumerate(logo_results[i][1]) if idx != -1
-            }
-
-        candidate_ids = set(t_sim_map.keys()) | set(l_sim_map.keys())
-
-        for db_id in candidate_ids:
-            row = master_db_lookup.get(db_id)
-            if not row: continue
-            if not q_name and not q_has_img: continue
-
-            t_ai = t_sim_map.get(db_id, 0.0)
-            l_ai = l_sim_map.get(db_id, 0.0)
-
-            if q_has_img:
-                if t_ai < similarity.CANDIDATE_FLOOR and l_ai < similarity.CANDIDATE_FLOOR: continue
+            if target == 'CLIENT':
+                db_data       = db.get_all_client_embeddings()
+                table_name    = "client_trademarks"
+                query_columns = """
+                    id,
+                    applicant_name as trademark_name,
+                    file_name as serial_number,
+                    applicant_name,
+                    description,
+                    NULL as class_indices,
+                    'Client Record' as agent_details,
+                    logo_data
+                """
             else:
-                if t_ai < similarity.CANDIDATE_FLOOR: continue
+                db_data       = db.get_all_embeddings(category=target)
+                table_name    = "trademarks"
+                query_columns = """
+                    id, trademark_name, serial_number, applicant_name, description,
+                    class_indices, agent_details, logo_data
+                """
 
-            result = similarity.score_match(
-                q_name_raw, row['trademark_name'] or "",
-                q_logo, row['logo_data'],
-                t_ai, l_ai, q_has_img
-            )
+            if not db_data or not db_data['ids']:
+                yield json.dumps({"status": "error", "message": f"Target {target} database is empty"}) + "\n"
+                return
 
-            # A match is included if EITHER score meets the threshold
-            if result['include']:
-                match_list.append({
-                    'id':           db_id,
-                    'serial':       row['serial_number'],
-                    'label':        row['trademark_name'] or row['applicant_name'],
-                    'textSim':      round(result['text_sim'] * 100, 2),
-                    'imgSim':       round(result['img_sim']  * 100, 2),
-                    # "name" | "ocr" | "none" - lets the UI say *why* a high
-                    # visual score doesn't mean the same word (see similarity.py)
-                    'textMismatch': result['text_mismatch'],
-                    'description':  row['description'],
-                    'modalClass':   row['class_indices'],
-                    'modalAgent':   row['agent_details']
-                })
+            db_logo_vectors = np.vstack(db_data['logo']).astype('float32')
+            db_text_vectors = np.vstack(db_data['text']).astype('float32')
+            faiss.normalize_L2(db_logo_vectors)
+            faiss.normalize_L2(db_text_vectors)
 
-        # Sort by the best individual score (whichever is higher)
-        match_list = sorted(
-            match_list,
-            key=lambda x: max(x['imgSim'], x['textSim']),
-            reverse=True
-        )
+            image_index = faiss.IndexFlatIP(similarity.IMAGE_EMBEDDING_DIM)
+            text_index  = faiss.IndexFlatIP(similarity.TEXT_EMBEDDING_DIM)
+            image_index.add(db_logo_vectors)
+            text_index.add(db_text_vectors)
 
-        if match_list:
-            # Every match >= 50% (either score), not a fixed count - the
-            # frontend paginates this list client-side so showing all of
-            # them doesn't cost render latency (see compare.js).
-            ui_matches = [m for m in match_list if max(m['imgSim'], m['textSim']) >= 50]
-            final_results.append({
-                'query_serial': q.get('serial_number') or q_name_raw or f"Item {i+1}",
-                'matches':      ui_matches,
-                'all_matches':  match_list[:20]   # up to {n} for PDF - unchanged
-            })
+            query_items = []
+            if source_category == 'UPLOAD':
+                if filename.endswith('.pdf'):
+                    results_from_pdf = []
+                    extractor        = UltraRobustExtractor()
+                    for update in extractor.extract_all(io.BytesIO(file_bytes), start_page=1):
+                        if update.get('status') == 'extracting':
+                            yield json.dumps({
+                                "status":       "extracting",
+                                "percentage":   update.get('percentage', 0),
+                                "current_page": update.get('current_page')
+                            }) + "\n"
+                        elif update.get('status') == 'extraction_complete':
+                            results_from_pdf = update.get('results', [])
+                    query_items = results_from_pdf
+                else:
+                    # NOT run through extract_logo_from_bytes() - that heuristic
+                    # looks for the biggest whitespace gap to split "logo" from
+                    # "other content" in a wider composite strip, but on an already-
+                    # tight single-logo upload (the expected input here, same as
+                    # /api/image_search) it can mistake the gap BETWEEN TWO LETTERS
+                    # for that boundary and silently chop the image in half (verified:
+                    # turned a 4-letter wordmark into just its first 2 letters).
+                    # /api/image_search never applied this heuristic and works
+                    # correctly - matching that instead of trying to make the
+                    # heuristic safer, since it's fundamentally guessing.
+                    query_items = [{
+                        'serial_number':  'IMAGE_UPLOAD',
+                        'trademark_name': words_field,
+                        'description':    '',
+                        'logo_data':      file_bytes
+                    }]
+            elif source_category == 'CLIENT':
+                query_items = db.get_client_query_items()
+            else:
+                query_items = db.get_query_items_by_category(source_category)
 
-    cur.close()
-    conn.close()
-    return jsonify(final_results)
+            if not query_items:
+                yield json.dumps({"status": "error", "message": "No items found in the selected source"}) + "\n"
+                return
+
+            yield json.dumps({"status": "embedding", "message": "Computing embeddings..."}) + "\n"
+
+            all_texts       = []
+            all_logo_images = []
+            logo_mapping    = []
+
+            for i, q in enumerate(query_items):
+                txt = f"{q.get('trademark_name','') or ''} {q.get('description','') or ''}".strip()
+                all_texts.append(txt if (txt and txt.lower() != 'n/a') else "empty")
+                if q.get('logo_data'):
+                    try:
+                        img = pad_to_square_rgb(PILImage.open(io.BytesIO(q['logo_data'])))
+                        all_logo_images.append(img)
+                        logo_mapping.append(i)
+                    except:
+                        pass
+
+            text_embeddings = ml_model.text_model.encode(all_texts, batch_size=32, convert_to_numpy=True)
+            faiss.normalize_L2(text_embeddings)
+            D_text, I_text = text_index.search(text_embeddings.astype('float32'), 10)
+
+            logo_results = {}
+            if all_logo_images:
+                logo_embeddings = ml_model.image_model.encode(all_logo_images, batch_size=32, convert_to_numpy=True)
+                faiss.normalize_L2(logo_embeddings)
+                D_logo, I_logo = image_index.search(logo_embeddings.astype('float32'), 20)
+                for i, query_idx in enumerate(logo_mapping):
+                    logo_results[query_idx] = (D_logo[i], I_logo[i])
+
+            final_results = []
+            conn = db.get_db_connection()
+            cur  = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+            all_potential_ids = set()
+            for i, _ in enumerate(query_items):
+                for idx in I_text[i]:
+                    if idx != -1: all_potential_ids.add(db_data['ids'][idx])
+                if i in logo_results:
+                    for idx in logo_results[i][1]:
+                        if idx != -1: all_potential_ids.add(db_data['ids'][idx])
+
+            master_db_lookup = {}
+            if all_potential_ids:
+                cur.execute(
+                    f"SELECT {query_columns} FROM {table_name} WHERE id = ANY(%s)",
+                    (list(all_potential_ids),)
+                )
+                master_db_lookup = {row['id']: row for row in cur.fetchall()}
+
+            total_items = len(query_items)
+            for i, q in enumerate(query_items):
+                match_list = []
+                q_name_raw = (
+                    q.get('trademark_name') or
+                    q.get('applicant_name') or
+                    q.get('serial_number') or
+                    ""
+                ).strip()
+                q_name = similarity.normalize(q_name_raw)
+
+                q_logo    = q.get('logo_data')
+                q_has_img = False
+                if q_logo:
+                    nparr = np.frombuffer(q_logo, np.uint8)
+                    img   = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
+                    if img is not None and np.std(img) > 5:
+                        q_has_img = True
+
+                t_sim_map = {
+                    db_data['ids'][idx]: float(D_text[i][rank])
+                    for rank, idx in enumerate(I_text[i]) if idx != -1
+                }
+                l_sim_map = {}
+                if i in logo_results:
+                    l_sim_map = {
+                        db_data['ids'][idx]: float(logo_results[i][0][rank])
+                        for rank, idx in enumerate(logo_results[i][1]) if idx != -1
+                    }
+
+                candidate_ids     = set(t_sim_map.keys()) | set(l_sim_map.keys())
+                total_candidates  = len(candidate_ids)
+
+                for c_idx, db_id in enumerate(candidate_ids):
+                    # Sub-progress WITHIN this item's own candidate loop,
+                    # yielded before any of the (possibly slow) scoring
+                    # work below - measured: a single query item's
+                    # candidates alone can take 6-24+ seconds when several
+                    # trigger similarity.py's OCR corroboration check, and
+                    # progress previously only updated once the WHOLE item
+                    # finished, making the bar look frozen mid-item even
+                    # though the server was actively working.
+                    item_fraction    = (c_idx + 1) / max(1, total_candidates)
+                    overall_fraction = (i + item_fraction) / total_items
+                    yield json.dumps({
+                        "status":          "scoring",
+                        "percentage":      int(overall_fraction * 100),
+                        "current":         i + 1,
+                        "total":           total_items,
+                        "candidate":       c_idx + 1,
+                        "candidate_total": total_candidates
+                    }) + "\n"
+
+                    row = master_db_lookup.get(db_id)
+                    if not row: continue
+                    if not q_name and not q_has_img: continue
+
+                    t_ai = t_sim_map.get(db_id, 0.0)
+                    l_ai = l_sim_map.get(db_id, 0.0)
+
+                    if q_has_img:
+                        if t_ai < similarity.CANDIDATE_FLOOR and l_ai < similarity.CANDIDATE_FLOOR: continue
+                    else:
+                        if t_ai < similarity.CANDIDATE_FLOOR: continue
+
+                    result = similarity.score_match(
+                        q_name_raw, row['trademark_name'] or "",
+                        q_logo, row['logo_data'],
+                        t_ai, l_ai, q_has_img
+                    )
+
+                    # A match is included if EITHER score meets the threshold
+                    if result['include']:
+                        match_list.append({
+                            'id':           db_id,
+                            'serial':       row['serial_number'],
+                            'label':        row['trademark_name'] or row['applicant_name'],
+                            'textSim':      round(result['text_sim'] * 100, 2),
+                            'imgSim':       round(result['img_sim']  * 100, 2),
+                            # "name" | "ocr" | "none" - lets the UI say *why* a high
+                            # visual score doesn't mean the same word (see similarity.py)
+                            'textMismatch': result['text_mismatch'],
+                            # "match" | "review" - a "review" candidate cleared the
+                            # confidence threshold but phash/ORB/color couldn't
+                            # corroborate it (see similarity.py's confidence-vs-
+                            # corroboration design) - surfaced for a human to check
+                            # instead of being silently dismissed like it used to be.
+                            'matchTier':        result['match_tier'],
+                            'visualCorroboration': result['visual_corroboration'],
+                            'description':  row['description'],
+                            'modalClass':   row['class_indices'],
+                            'modalAgent':   row['agent_details']
+                        })
+
+                # Sort by the best individual score (whichever is higher)
+                match_list = sorted(
+                    match_list,
+                    key=lambda x: max(x['imgSim'], x['textSim']),
+                    reverse=True
+                )
+
+                if match_list:
+                    # Every match >= 50% (either score), not a fixed count - the
+                    # frontend paginates this list client-side so showing all of
+                    # them doesn't cost render latency (see compare.js).
+                    ui_matches = [m for m in match_list if max(m['imgSim'], m['textSim']) >= 50]
+                    final_results.append({
+                        'query_serial': q.get('serial_number') or q_name_raw or f"Item {i+1}",
+                        'matches':      ui_matches,
+                        'all_matches':  match_list[:20]   # up to {n} for PDF - unchanged
+                    })
+
+                percent = int(((i + 1) / total_items) * 100)
+                yield json.dumps({
+                    "status":     "scoring",
+                    "percentage": percent,
+                    "current":    i + 1,
+                    "total":      total_items
+                }) + "\n"
+
+            cur.close()
+            conn.close()
+            yield json.dumps({"status": "complete", "results": final_results}) + "\n"
+        except Exception as e:
+            traceback.print_exc()
+            yield json.dumps({"status": "error", "message": str(e)}) + "\n"
+
+    return Response(generate(), mimetype='application/x-ndjson')
 
 # ===============================================================================================
 # DOWNLOAD REPORT AS PDF FORMAT

@@ -84,7 +84,9 @@ def evaluate(pairs, rows):
             orb_sim, orb_reliable = 0.0, False
 
         scored.append((qid, cid, label, result["text_sim"], result["img_sim"], result["include"],
-                       result["threshold"], t_ai, l_ai, pixel_sim, orb_sim))
+                       result["threshold"], t_ai, l_ai, pixel_sim, orb_sim,
+                       result.get("match_tier", "match" if result["include"] else "dismiss"),
+                       result.get("visual_corroboration", "unknown")))
 
     if skipped:
         print(f"  (skipped {skipped} pairs referencing rows outside the sampled/limit window)")
@@ -100,7 +102,7 @@ def report_true_match_signals(scored):
     if not matches:
         return
     print("=== Raw signals for known true-match pairs ===")
-    for qid, cid, label, text_sim, img_sim, include, threshold, t_ai, l_ai, pixel_sim, orb_sim in matches:
+    for qid, cid, label, text_sim, img_sim, include, threshold, t_ai, l_ai, pixel_sim, orb_sim, *_ in matches:
         print(f"  query={qid} candidate={cid}  t_ai={t_ai:.3f}  l_ai={l_ai:.3f}  "
               f"phash={pixel_sim:.3f}  orb={orb_sim:.3f}  img_sim={img_sim:.3f}  include={include}")
     print()
@@ -118,7 +120,7 @@ def report_fp_breakdown(scored):
         return
 
     text_only = img_only = both = 0
-    for qid, cid, label, text_sim, img_sim, include, threshold, t_ai, l_ai, pixel_sim, orb_sim in fps:
+    for qid, cid, label, text_sim, img_sim, include, threshold, t_ai, l_ai, pixel_sim, orb_sim, *_ in fps:
         text_over = text_sim >= threshold
         img_over  = img_sim  >= threshold
         if text_over and img_over:
@@ -153,7 +155,7 @@ def report_ranking(scored):
     top-3) among all candidates gathered for that same query?
     """
     by_query = {}
-    for qid, cid, label, text_sim, img_sim, include, threshold, t_ai, l_ai, pixel_sim, orb_sim in scored:
+    for qid, cid, label, text_sim, img_sim, include, threshold, t_ai, l_ai, pixel_sim, orb_sim, *_ in scored:
         by_query.setdefault(qid, []).append((cid, label, max(text_sim, img_sim)))
 
     queries_with_match = {qid: cands for qid, cands in by_query.items()
@@ -184,9 +186,56 @@ def report_ranking(scored):
     print(f"  mean reciprocal rank: {mrr:.3f}\n")
 
 
+def report_tier_breakdown(scored):
+    """
+    similarity.score_match() routes each candidate to "match" / "review" /
+    "dismiss" instead of a binary include/exclude (see similarity.py's
+    confidence-vs-corroboration design). A binary confusion matrix treats
+    "review" the same as a confident "match", which overstates how bad a
+    given change looks: a no_match candidate routed to "review" was
+    correctly flagged as uncertain for a human to check, not confidently
+    mislabeled - very different outcomes for a real user. This reports
+    both separately so a precision drop can be diagnosed as "more
+    confident wrong matches" (a real regression) vs "more borderline cases
+    surfaced for review" (the intended tradeoff of not silently dismissing
+    disagreement).
+    """
+    match_pairs    = [s for s in scored if s[2] == "match"]
+    no_match_pairs = [s for s in scored if s[2] == "no_match"]
+
+    def tier_counts(pairs):
+        counts = {"match": 0, "review": 0, "dismiss": 0}
+        for s in pairs:
+            tier = s[11] if len(s) > 11 else ("match" if s[5] else "dismiss")
+            counts[tier] = counts.get(tier, 0) + 1
+        return counts
+
+    m_counts = tier_counts(match_pairs)
+    n_counts = tier_counts(no_match_pairs)
+
+    print("=== 3-way tier breakdown (match / review / dismiss) ===")
+    print(f"  Known TRUE matches    ({len(match_pairs):>3} pairs): "
+          f"match={m_counts['match']:>3}  review={m_counts['review']:>3}  dismiss={m_counts['dismiss']:>3}"
+          f"   <- dismiss here is a real recall loss")
+    print(f"  Known NON-matches     ({len(no_match_pairs):>3} pairs): "
+          f"match={n_counts['match']:>3}  review={n_counts['review']:>3}  dismiss={n_counts['dismiss']:>3}"
+          f"   <- 'match' here is a confident false positive (the real problem);"
+          f" 'review' is a flagged-for-human case, not a silent error\n")
+
+    confident_fp = n_counts['match']
+    reviewed_fp  = n_counts['review']
+    true_dismiss = n_counts['dismiss']
+    tp           = m_counts['match'] + m_counts['review']  # both still "findable" by the user
+    fn           = m_counts['dismiss']
+    precision_confident_only = tp / (tp + confident_fp) if (tp + confident_fp) else float("nan")
+    print(f"  Recall (found as match or review): {tp}/{len(match_pairs)} ({tp/max(1,len(match_pairs)):.0%})")
+    print(f"  Precision counting ONLY confident 'match' as a false positive "
+          f"(review excluded): {precision_confident_only:.3f}\n")
+
+
 def confusion(scored, predicate):
     tp = fp = fn = tn = 0
-    for qid, cid, label, text_sim, img_sim, include, threshold, t_ai, l_ai, pixel_sim, orb_sim in scored:
+    for qid, cid, label, text_sim, img_sim, include, threshold, t_ai, l_ai, pixel_sim, orb_sim, *_ in scored:
         pred_match = predicate(text_sim, img_sim, include)
         actual_match = (label == "match")
         if pred_match and actual_match: tp += 1
@@ -233,6 +282,7 @@ def main():
     print(f"  TP={current['tp']} FP={current['fp']} FN={current['fn']} TN={current['tn']}")
     print(f"  precision={current['precision']:.3f}  recall={current['recall']:.3f}  f1={current['f1']:.3f}\n")
 
+    report_tier_breakdown(scored)
     report_true_match_signals(scored)
     report_fp_breakdown(scored)
 

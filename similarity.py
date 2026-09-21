@@ -51,6 +51,33 @@ OCR_TRIGGER_FLOOR        = 0.65  # only worth the ~0.5-0.7s OCR call once img_si
 OCR_MIN_CONFIDENCE       = 0.5   # PaddleOCR rec_score below this = "couldn't read it", not evidence
 OCR_MAX_DIM              = 320   # downscale before OCR - see ocr_text_bytes()
 
+# ── Color guard ──────────────────────────────────────────────────────────
+# phash and ORB both work on grayscale - they're blind to color entirely,
+# so two logos with identical silhouettes but obviously different claimed
+# colors (real field seen in production data: "COLOURS CLAIMED : RED, BLUE
+# AND BLACK") would otherwise score identically under those two signals.
+# Softer than the text-mismatch dampening: color alone isn't dispositive
+# of a different mark (many marks are registered without color limitation),
+# so this only nudges the score down, never vetoes.
+COLOR_MISMATCH_CEILING   = 0.35  # below this HSV histogram correlation, colors are "clearly different"
+COLOR_MISMATCH_DAMPENING = 0.75
+COLOR_MIN_PIXELS         = 50    # below this many non-transparent pixels, a color read is unreliable
+
+# The old dampening (multiplying img_sim by ~0.4x on corroboration
+# disagreement) was doing double duty: destructive to real matches (the
+# Kinder Bueno bug), but it ALSO acted as a much-higher effective bar for
+# anything that failed corroboration - no disagreeing candidate could
+# mathematically survive that cut and still clear MATCH_THRESHOLD_*.
+# Removing the dampening fixed the destructive part but also removed that
+# implicit filter: CLIP's raw cosine similarity turns out to be a
+# generously low bar for generic round/badge-shaped logos, so without a
+# separate floor, "review" flooded with weakly-related candidates
+# (confirmed real case: unrelated logos at 58-68% raw confidence all
+# surfaced once corroboration no longer suppressed them). A disagreeing
+# candidate now needs CLIP to be genuinely confident, not just past the
+# base threshold, before it's worth a human's time.
+REVIEW_CONFIDENCE_FLOOR = 0.70
+
 # ── Match-inclusion thresholds ──────────────────────────────────────────
 # Calibrated via eval/eval_similarity.py against bootstrapped ground truth
 # (see eval/bootstrap_pairs.csv). Both known true matches scored img_sim of
@@ -185,14 +212,24 @@ def phash_score_bytes(b1: bytes, b2: bytes) -> float:
         return 0.0
 
 
-ORB_MIN_KEYPOINTS = 15  # below this, too few keypoints for the match score to mean anything
+ORB_MIN_KEYPOINTS       = 15   # below this, too few keypoints for the match score to mean anything
+RANSAC_MIN_MATCHES      = 8    # below this, too few points to fit/trust a homography - fall back to raw ratio-test count
+RANSAC_REPROJ_THRESHOLD = 5.0  # pixels - standard default for logo-scale crops
 
 
 def orb_match_score_bytes(b1: bytes, b2: bytes):
     """Returns (score, reliable). reliable=False when either image has too few
     detectable keypoints (e.g. a plain icon with little internal texture) —
     callers should not treat an unreliable near-zero score as evidence of
-    dissimilarity, since ORB simply couldn't get a meaningful read at all."""
+    dissimilarity, since ORB simply couldn't get a meaningful read at all.
+
+    Matches are geometrically verified via RANSAC homography fitting when
+    there are enough of them - counting only inliers (keypoints consistent
+    with a single coherent transform between the two images), not just raw
+    ratio-test matches. Two unrelated logos can accumulate coincidental
+    keypoint matches that individually pass the ratio test but are
+    scattered incoherently across the image; a plain match count can't
+    tell that apart from a real match, RANSAC can."""
     try:
         a = cv2.imdecode(np.frombuffer(b1, np.uint8), cv2.IMREAD_GRAYSCALE)
         b = cv2.imdecode(np.frombuffer(b2, np.uint8), cv2.IMREAD_GRAYSCALE)
@@ -207,24 +244,97 @@ def orb_match_score_bytes(b1: bytes, b2: bytes):
 
         bf      = cv2.BFMatcher(cv2.NORM_HAMMING)
         matches = bf.knnMatch(d1, d2, k=2)
-        good    = 0
+        good    = []
         for m_n in matches:
             if len(m_n) < 2:
                 continue
             m, n = m_n
             if m.distance < 0.75 * n.distance:
-                good += 1
+                good.append(m)
+
         smaller_count = min(len(k1), len(k2))
-        denom = max(1, smaller_count)
-        return float(good) / denom, smaller_count >= ORB_MIN_KEYPOINTS
+        reliable      = smaller_count >= ORB_MIN_KEYPOINTS
+        denom         = max(1, smaller_count)
+
+        if len(good) < RANSAC_MIN_MATCHES:
+            # Too few points to fit/trust a homography - same behavior as
+            # before RANSAC was added, not "no match".
+            return float(len(good)) / denom, reliable
+
+        src_pts = np.float32([k1[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
+        dst_pts = np.float32([k2[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
+        _, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, RANSAC_REPROJ_THRESHOLD)
+        inliers = int(mask.sum()) if mask is not None else 0
+
+        return float(inliers) / denom, reliable
+    except Exception:
+        return 0.0, False
+
+
+def _masked_hsv_hist(img):
+    """HSV hue/saturation histogram, masked to non-transparent pixels only
+    (our logo crops are saved with a transparent background via
+    remove_white_bg_make_transparent() - background pixels would otherwise
+    dilute the actual logo's color signature with whatever RGB happened to
+    sit under the transparency)."""
+    mask = None
+    if img.ndim == 3 and img.shape[2] == 4:
+        mask = img[:, :, 3]
+        bgr  = img[:, :, :3]
+    elif img.ndim == 3:
+        bgr = img
+    else:
+        bgr = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    non_transparent = int(np.count_nonzero(mask)) if mask is not None else bgr.shape[0] * bgr.shape[1]
+    hsv  = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    hist = cv2.calcHist([hsv], [0, 1], mask, [50, 60], [0, 180, 0, 256])
+    cv2.normalize(hist, hist)
+    return hist, non_transparent
+
+
+def color_hist_score(b1: bytes, b2: bytes):
+    """Returns (score, reliable). HSV histogram correlation over the
+    non-transparent (actual logo ink) pixels only. reliable=False when
+    either image has too few non-transparent pixels to build a meaningful
+    histogram (e.g. a near-blank crop) - same "can't read it, not evidence
+    of difference" philosophy as ORB_MIN_KEYPOINTS."""
+    try:
+        img1 = cv2.imdecode(np.frombuffer(b1, np.uint8), cv2.IMREAD_UNCHANGED)
+        img2 = cv2.imdecode(np.frombuffer(b2, np.uint8), cv2.IMREAD_UNCHANGED)
+        if img1 is None or img2 is None:
+            return 0.0, False
+
+        h1, n1 = _masked_hsv_hist(img1)
+        h2, n2 = _masked_hsv_hist(img2)
+        reliable = n1 >= COLOR_MIN_PIXELS and n2 >= COLOR_MIN_PIXELS
+
+        corr = cv2.compareHist(h1, h2, cv2.HISTCMP_CORREL)
+        return max(0.0, float(corr)), reliable
     except Exception:
         return 0.0, False
 
 
 def score_match(q_name_raw, db_name_raw, q_logo_bytes, db_logo_bytes, t_ai, l_ai, q_has_img):
     """
-    Blend text + image signals into a single match decision.
-    Mirrors the logic previously inline in app.py's perform_comparison() 1:1.
+    Blend text + image signals into a match decision.
+
+    CONFIDENCE vs CORROBORATION are kept separate for the visual channel
+    instead of collapsed into one mutated number. The old design
+    multiplicatively dampened CLIP's raw confidence (l_ai) whenever
+    phash/ORB/color disagreed - which repeatedly destroyed real matches
+    whose only "problem" was a heuristic corroboration check that was
+    never designed for the actual situation (confirmed: a genuine "Kinder
+    Bueno Dark" match scored l_ai=0.83, but was silently dismissed at 25%
+    because a partial-crop query broke phash/ORB/color's assumption of
+    comparable framing between the two images - the mark was real, the
+    corroboration check was just wrong for THIS case, and the old design
+    had no way to distinguish "corroboration disagrees because this is a
+    bad match" from "corroboration disagrees for an unrelated reason").
+    Now: img_sim stays close to the raw confidence (still boosted when
+    corroboration DOES agree - that's confirming information, not
+    destroying it), visual_corroboration reports agree/disagree/unknown
+    separately, and disagreement routes to a "review" tier for a human to
+    check instead of silently vanishing.
 
     t_ai / l_ai: CLIP cosine similarities for text/image, already looked up
                  from the FAISS search results by the caller.
@@ -246,40 +356,79 @@ def score_match(q_name_raw, db_name_raw, q_logo_bytes, db_logo_bytes, t_ai, l_ai
     phonetic = phonetic_ratio(q_name, db_name)
     text_sim = max(literal, t_ai * CLIP_TEXT_WEIGHT, fuzzy * FUZZY_TEXT_WEIGHT, phonetic * PHONETIC_TEXT_WEIGHT)
 
-    pixel_sim = phash_score_bytes(q_logo_bytes, db_logo_bytes) if (q_has_img and db_logo_bytes) else 0.0
-    if q_has_img and db_logo_bytes:
-        orb_sim, orb_reliable = orb_match_score_bytes(q_logo_bytes, db_logo_bytes)
-    else:
-        orb_sim, orb_reliable = 0.0, False
-    # min(), not max(): eval showed phash alone gives false agreement on unrelated
-    # logos while ORB stays near-zero — both signals must agree there's real
-    # structural similarity to trust l_ai. But ORB needs enough keypoints to mean
-    # anything (a plain icon with little texture yields near-zero regardless of
-    # similarity) — fall back to phash alone when ORB couldn't get a reliable read.
-    if orb_reliable:
-        corroboration, ceiling = min(pixel_sim, orb_sim), PHASH_DISAGREEMENT_CEILING
-    else:
-        corroboration, ceiling = pixel_sim, PHASH_ONLY_FALLBACK_FLOOR
-    img_sim = (
-        l_ai * PHASH_DAMPENING_FACTOR
-        if corroboration < ceiling
-        else max(l_ai, pixel_sim, orb_sim)
-    )
+    img_sim = l_ai
+    # "agree" | "disagree" | "unknown" - unknown when there's no image on
+    # one/both sides to corroborate against at all (not evidence either way).
+    visual_corroboration = "unknown"
 
-    # Same-font-different-word guard (see constants above). Registered
-    # names first - cheap, no image decoding; OCR only as a fallback when
-    # a name is missing, and only when img_sim is already high enough that
-    # the false-positive pattern could actually occur (worth the ~0.5-0.7s
-    # OCR call).
+    if q_has_img and db_logo_bytes:
+        pixel_sim                 = phash_score_bytes(q_logo_bytes, db_logo_bytes)
+        orb_sim, orb_reliable     = orb_match_score_bytes(q_logo_bytes, db_logo_bytes)
+        color_sim, color_reliable = color_hist_score(q_logo_bytes, db_logo_bytes)
+
+        # min(), not max(): eval showed phash alone gives false agreement on
+        # unrelated logos while ORB stays near-zero — both signals must agree
+        # there's real structural similarity. But ORB needs enough keypoints
+        # to mean anything (a plain icon with little texture yields near-zero
+        # regardless of similarity) — fall back to phash alone when ORB
+        # couldn't get a reliable read.
+        if orb_reliable:
+            po_corroboration, po_ceiling = min(pixel_sim, orb_sim), PHASH_DISAGREEMENT_CEILING
+        else:
+            po_corroboration, po_ceiling = pixel_sim, PHASH_ONLY_FALLBACK_FLOOR
+        po_agrees = po_corroboration >= po_ceiling
+
+        # phash/ORB are grayscale-blind - color is the only signal that
+        # would catch "same shape, different claimed color" (real field
+        # seen in production data: "COLOURS CLAIMED : RED, BLUE AND BLACK").
+        color_agrees = (not color_reliable) or (color_sim >= COLOR_MISMATCH_CEILING)
+
+        if po_agrees:
+            img_sim = max(img_sim, pixel_sim, orb_sim)
+
+        visual_corroboration = "agree" if (po_agrees and color_agrees) else "disagree"
+        # A partial-crop query (e.g. a tight screenshot of a wider stored
+        # composite) legitimately fails phash/ORB/color, which all assume
+        # comparable framing - a dedicated template-matching "is this a
+        # crop of that" check was tried here and REMOVED: normalized
+        # cross-correlation turned out to not be discriminative enough
+        # (confirmed: 4 unrelated logos scored 0.58-0.68 "containment"
+        # against a real query, indistinguishable from a genuine crop's
+        # 0.62, even after gating on local pixel variance). Not needed
+        # anyway - a genuine partial-crop case with high CLIP confidence
+        # already routes to "review" below instead of being silently
+        # dismissed, which resolves the same underlying problem without
+        # a separate, unreliable signal.
+
+    # Same-font-different-word guard (see constants above). OCR reads the
+    # actual logo pixels directly - more direct, dispositive evidence than
+    # the visual-style corroboration above, so it stays a real dampening
+    # veto rather than feeding the review-routing decision. When available,
+    # it overrides the registered-name signal rather than being skipped
+    # once the name check already fired. Confirmed necessary: a real
+    # record's trademark_name was "pure" (a product line) while the logo
+    # itself reads "DURU" (the brand name lives in applicant_name instead)
+    # - a query for "DU" was wrongly dampened by the name check (0.6x,
+    # 85.78%->51.47%) even though OCR of the actual logo correctly reads
+    # "DURU", of which "DU" is a clean substring. Only checked when img_sim
+    # is already high enough that the false-positive pattern could occur
+    # (worth the ~0.5-0.7s OCR call).
     text_mismatch = "none"
-    if _clearly_different(q_name, db_name):
+    name_mismatch = _clearly_different(q_name, db_name)
+    ocr_mismatch  = None  # None = not checked / no usable OCR evidence
+    if img_sim >= OCR_TRIGGER_FLOOR and q_has_img and db_logo_bytes:
+        q_ocr, db_ocr = ocr_text_bytes(q_logo_bytes), ocr_text_bytes(db_logo_bytes)
+        if q_ocr and db_ocr:
+            ocr_mismatch = _clearly_different(q_ocr, db_ocr)
+
+    if ocr_mismatch is True:
+        img_sim *= OCR_MISMATCH_DAMPENING
+        text_mismatch = "ocr"
+    elif ocr_mismatch is False:
+        pass  # direct pixel evidence overrides a name-only mismatch - no dampening
+    elif name_mismatch:
         img_sim *= NAME_MISMATCH_DAMPENING
         text_mismatch = "name"
-    elif img_sim >= OCR_TRIGGER_FLOOR and q_has_img and db_logo_bytes:
-        q_ocr, db_ocr = ocr_text_bytes(q_logo_bytes), ocr_text_bytes(db_logo_bytes)
-        if _clearly_different(q_ocr, db_ocr):
-            img_sim *= OCR_MISMATCH_DAMPENING
-            text_mismatch = "ocr"
 
     if img_sim > IMG_SIM_SATURATION:
         img_sim = 1.0
@@ -293,13 +442,34 @@ def score_match(q_name_raw, db_name_raw, q_logo_bytes, db_logo_bytes, t_ai, l_ai
     else:
         threshold = 1.0
 
-    include = img_sim >= threshold or text_sim >= threshold
+    # Routing: crossing the threshold used to mean one binary thing
+    # ("show it"). Now a candidate that clears threshold purely on visual
+    # confidence, with no text-mismatch evidence either way, but whose
+    # visual corroboration disagrees, gets routed to "review" instead of a
+    # confident "match" - surfaced to a human instead of either silently
+    # hidden (the old bug) or confidently mislabeled as verified.
+    if text_sim >= threshold:
+        match_tier = "match"
+    elif img_sim >= threshold:
+        if text_mismatch == "none" and visual_corroboration == "disagree":
+            # See REVIEW_CONFIDENCE_FLOOR above - a disagreeing candidate
+            # needs CLIP to be genuinely confident, not just past the base
+            # threshold, or this tier floods with weak, generic matches.
+            match_tier = "review" if img_sim >= REVIEW_CONFIDENCE_FLOOR else "dismiss"
+        else:
+            match_tier = "match"
+    else:
+        match_tier = "dismiss"
+
+    include = match_tier != "dismiss"
 
     return {
-        "text_sim":      text_sim,
-        "img_sim":       img_sim,
-        "threshold":     threshold,
-        "include":       include,
+        "text_sim":             text_sim,
+        "img_sim":              img_sim,
+        "threshold":            threshold,
+        "include":              include,
+        "match_tier":           match_tier,            # "match" | "review" | "dismiss"
+        "visual_corroboration": visual_corroboration,   # "agree" | "disagree" | "unknown"
         # "none" | "name" | "ocr" - which signal (if any) proved the words differ
-        "text_mismatch": text_mismatch,
+        "text_mismatch":        text_mismatch,
     }
