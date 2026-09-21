@@ -826,12 +826,28 @@ class UltraRobustExtractor:
         # to run earlier in this function for why. Still strip the
         # boilerplate out of the description text below, just don't use
         # it as a name source.
-        desc = re.sub(r"Mark\s+translation:[^\.]+\.\s*", "", desc)
-        desc = re.sub(r"Mark\s+transliteration:[^\.]+\.\s*", "", desc)
-        desc = re.sub(r"Mark\s+translation:[^A-Z]+", "", desc)
-        desc = re.sub(r"Mark\s+transliteration:[^A-Z]+", "", desc)
+        #
+        # Bound the match by "up to the next CAPITALIZED word", not "up to
+        # the next period" - these notes (and the disclaimer below)
+        # routinely run straight into the goods list with no period of
+        # their own (real examples: 'Mark transliteration: "ye"; "mao";
+        # "lu"; "lu" Cafe and...', and separately a disclaimer ending
+        # "...word 'kanopi'" with no trailing period at all). A period-
+        # bounded [^\.]+\. greedily matches through to the FIRST period it
+        # can find - on a goods list with no internal punctuation before
+        # its own closing period, that's the description's own final
+        # period, so the entire real description gets deleted along with
+        # the note (confirmed: reduced real descriptions from ~470/~700
+        # chars down to 0-48 chars on 3 separate real records). Goods/
+        # services lists always start with a capitalized word, so this
+        # bound correctly stops right where the real content begins,
+        # period or not. Also matches the real "Mark transaltion:" typo
+        # seen in the source (\w+ covers translation/transliteration/any
+        # misspelling), which the old literal "translation:" spelling
+        # missed entirely.
+        desc = re.sub(r"Mark\s+\w+\s*:[^A-Z]+", "", desc)
 
-        desc = re.sub(r"Registration of this trademark[^\.]+\.", "", desc, flags=re.IGNORECASE)
+        desc = re.sub(r"Registration of this trademark[^A-Z]+", "", desc)
 
         if fields["serial_number"]:
             desc = desc.replace(fields["serial_number"], "")
