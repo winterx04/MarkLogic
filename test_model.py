@@ -90,7 +90,7 @@ CORRECTABLE_CLASSES = {
 #   value False -> match anywhere in the text (a phrase, not necessarily first)
 OCR_LABEL_OVERRIDES = {
     "AGENT":                             ("agent",                              True),
-    "CLASS":                             ("class",                              True),
+    #"CLASS":                             ("class",                              True),
     "PRIORITYDATECLAIM":                 ("international_registration_date",    False),
     "INTERNATIONALREGISTRATIONNUMBER":   ("international_registration_number",  False),
 }
@@ -112,7 +112,7 @@ _field_ocr_engine = None
 def _get_field_ocr_engine():
     """Separate PaddleOCR engine from similarity.py's shared singleton -
     similarity.py's engine (PP-OCRv6 medium) is already eval-validated for
-    the Compare feature's font-mismatch guard, so it's left untouched.
+    the Compare feature's font-mismatch guard, so it's left untouched. 
     This one uses PP-OCRv6 TINY instead: measured on a real page, tiny was
     32.5x faster (0.16s/box vs 5.05s/box) with byte-identical text output
     on every one of 16 real boxes (descriptions, AGENT/CLASS labels,
@@ -443,8 +443,8 @@ def prompt_input():
 def main():
     parser = argparse.ArgumentParser(description="Test your trained YOLO trademark model.")
     parser.add_argument("--input",      default=None,                     help="Path to image (.png/.jpg) or PDF")
-    parser.add_argument("--model",      default="models/best_colab2.pt",  help="Path to trained model .pt file")
-    parser.add_argument("--conf",       type=float, default=0.25,         help="Confidence threshold (default: 0.25)")
+    parser.add_argument("--model",      default="models/best_colab3.pt",  help="Path to trained model .pt file")
+    parser.add_argument("--conf",       type=float, default=0.45,         help="Confidence threshold (default: 0.25)")
     parser.add_argument("--out",        default="test_results",           help="Output folder for annotated images")
     parser.add_argument("--start_page", type=int,   default=4,            help="PDF: first page to process")
     parser.add_argument("--max_pages",  type=int,   default=10,           help="PDF: max pages to process")

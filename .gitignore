@@ -7,3 +7,6 @@ __pycache__/
 /eval/bootstrap_pairs.csv
 create_admin_user.py
 /models/*.pt
+*.zip
+/export_fixed
+/to_review
