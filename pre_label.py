@@ -122,7 +122,7 @@ def main():
     p = argparse.ArgumentParser(description="Pre-label new images with the current best model.")
     p.add_argument("--images", required=True, help="Folder of new, unlabeled page images")
     p.add_argument("--out", default="to_review", help="Output folder (default: to_review)")
-    p.add_argument("--model", default="models/best_colab_v2.pt",
+    p.add_argument("--model", default="models/best_colab2.pt",
                     help="Path to trained model weights (default: the not-yet-downloaded "
                          "9-class-v2 retrain; pass --model models/best_colab.pt explicitly "
                          "if you intentionally want to pre-label with the old model)")

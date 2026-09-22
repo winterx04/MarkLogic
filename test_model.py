@@ -185,7 +185,7 @@ def prompt_input():
 def main():
     parser = argparse.ArgumentParser(description="Test your trained YOLO trademark model.")
     parser.add_argument("--input",      default=None,                              help="Path to image (.png/.jpg) or PDF")
-    parser.add_argument("--model",      default="models/best_colab2.pt", help="Path to trained model .pt file (default: the not-yet-downloaded 9-class-v2 retrain; pass --model models/best_colab.pt explicitly if you intentionally want to test the old model)")
+    parser.add_argument("--model",      default="models/best_colab3.pt", help="Path to trained model .pt file (default: the not-yet-downloaded 9-class-v2 retrain; pass --model models/best_colab.pt explicitly if you intentionally want to test the old model)")
     parser.add_argument("--conf",       type=float, default=0.25,                 help="Confidence threshold (default: 0.25)")
     parser.add_argument("--out",        default="test_results",                   help="Output folder for annotated images")
     parser.add_argument("--start_page", type=int,   default=4,                    help="PDF: first page to process")
