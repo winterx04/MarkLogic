@@ -62,8 +62,14 @@ if __name__ == "__main__":
     p.add_argument("--start", type=int, default=1, help="Page number to start from")
     p.add_argument("--end", type=int, default=None, help="Page number to end at (optional)")
 
-    # --- NEW ARGUMENT FOR PREFIX ---
-    p.add_argument("--prefix", default="journal", help="Filename prefix (e.g. journal_2024_05)")
+    # Required, no default - a shared default (e.g. "journal") lets two
+    # different source PDFs both produce "journal_page_0100.png", which
+    # merge_dataset.py's filename-only duplicate check then silently treats
+    # as "already merged" even when the actual page content is completely
+    # different (confirmed: 264 genuinely new labeled images were dropped
+    # this way before the mismatch was caught). Forcing a unique prefix per
+    # batch (e.g. batch30_2026, index2) prevents that collision outright.
+    p.add_argument("--prefix", required=True, help="Unique filename prefix per batch/PDF (e.g. batch30_2026)")
     
     args = p.parse_args()
     
