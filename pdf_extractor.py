@@ -442,6 +442,36 @@ class UltraRobustExtractor:
         union = area_a + area_b - inter
         return inter / union if union > 0 else 0.0
 
+    def _logo_ocr_rejects(self, pil_crop):
+            """OCR sanity-check for a YOLO 'logo' candidate: reject if it
+            reads as plain running text that's obviously NOT a logo
+            (currently: a clean calendar date). Confirmed real bug: YOLO
+            once called the filing date "17 June 2025" a logo at conf=0.214,
+            with no competing date-class detection at that region to catch
+            it via the spurious-overlap check below (that check only fires
+            when TWO detections overlap - this catches the case where
+            there's only one, and it's simply wrong). A real logo either has
+            no readable text (pure graphic) or reads as a brand name/
+            wordmark, never a fully-formed date. Reuses the same tiny OCR
+            engine already used for field cross-validation - no new model
+            load, same ~0.16s/box cost already accepted there."""
+            engine = _get_block_ocr_engine()
+            if not engine:
+                return False  # can't check - don't reject on missing capability
+            try:
+                arr = np.array(pil_crop.convert("RGB"))
+                bgr = arr[:, :, ::-1]
+                words = []
+                for res in engine.predict(bgr):
+                    texts  = res.get('rec_texts')  or []
+                    scores = res.get('rec_scores') or []
+                    words.extend(t for t, s in zip(texts, scores) if s >= 0.5)
+                text = " ".join(words).strip()
+                return bool(text) and bool(self.date_pattern.search(text))
+            except Exception as e:
+                self.log(f"Logo OCR sanity-check failed: {e}")
+                return False  # OCR failure - don't reject on uncertainty
+
     def extract_logos_yolo(self, page, block_bbox):
             """Returns EVERY logo box found in this block (cropped + cleaned),
             not just the largest - a composite mark can have several sub-
@@ -497,6 +527,9 @@ class UltraRobustExtractor:
                     x1 = min(img_w, int(box[2]))
                     y1 = min(img_h, int(box[3]))
                     logo_crop = img.crop((x0, y0, x1, y1))
+                    if self._logo_ocr_rejects(logo_crop):
+                        self.log(f"Rejected logo candidate (conf={conf:.2f}) - OCR reads as a plain date, not a logo")
+                        continue
                     buf = io.BytesIO()
                     logo_crop.save(buf, format="PNG")
                     crops.append(self.remove_white_bg_make_transparent(buf.getvalue()))

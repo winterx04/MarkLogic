@@ -93,6 +93,18 @@ OCR_LABEL_OVERRIDES = {
     #"CLASS":                             ("class",                              True),
     "PRIORITYDATECLAIM":                 ("international_registration_date",    False),
     "INTERNATIONALREGISTRATIONNUMBER":   ("international_registration_number",  False),
+    # Disclaimer/notice text that precedes the real goods list - the same
+    # recurring pattern chased throughout this whole investigation (double
+    # description boxes, missing boxes, and now confirmed: raw YOLO
+    # sometimes calls it "applicant" outright, e.g. GTH's "The trade mark
+    # is limited to the colours..." at conf 0.50). Rule 3 only catches
+    # agent-shaped mislabels; nothing previously caught applicant-shaped
+    # ones. These always lead their own box's text, so at_start=True.
+    "REGISTRATIONOFTHISTRADEMARK":       ("description",                        True),
+    "THETRADEMARKIS":                    ("description",                        True),  # short prefix - OCR read "LIMITED" as "IMITED" once, don't depend on that word
+    "ADVERTISEMENTOFASERIES":            ("description",                        True),
+    "PROCEEDINGUNDERSECTION":            ("description",                        True),
+    "MARKTRANS":                         ("description",                        True),  # translation/transliteration/the real "transaltion" typo
 }
 
 # Only present on Madrid Protocol / international-route filings. Format
@@ -179,16 +191,53 @@ def read_box_text(crop_bgr):
 
 
 def ink_density(crop_bgr):
-    """Fraction of dark ('ink') pixels in a text-field crop - a rough,
-    UNCALIBRATED proxy for bold vs regular font weight (bold strokes cover
-    more area at the same font size/length). Printed for inspection only -
-    not used to auto-correct anything yet, since it needs to be checked
-    against real bold-applicant vs regular-description crops first."""
+    """Fraction of dark ('ink') pixels in a text-field crop. Kept for
+    inspection/printing only - validated against real crops and found
+    UNRELIABLE for bold-vs-regular (a genuine bold applicant read 0.168-0.183,
+    but italic disclaimer text read 0.140-0.204 - directly overlapping,
+    since italic slant plus serif strokes covers comparable area to bold
+    weight). Use stroke_width() instead for anything that actually gates a
+    correction."""
     if crop_bgr.size == 0:
         return 0.0
     gray = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2GRAY)
     _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     return float(np.count_nonzero(binary)) / binary.size
+
+
+def stroke_width(crop_bgr):
+    """Median stroke width via connected-component geometry: for an
+    elongated ink blob, 2*Area/Perimeter ~= width (exact for a long thin
+    rectangle: Area=w*L, Perimeter~=2L when L>>w). Measures PERPENDICULAR
+    stroke thickness rather than total dark-pixel coverage, so - unlike
+    ink_density() - it isn't confused by italic slant.
+    Validated against real page-7 boxes (index4.pdf): genuine bold
+    applicant text measured 1.69-1.72; italic disclaimer text and regular
+    (non-bold) goods-list text wrongly classified "applicant" all measured
+    <=0.86 - a clean gap, no overlap. Threshold below is set well below the
+    observed genuine-applicant floor for margin, but is only calibrated on
+    this one page so far - watch for false corrections as more pages are
+    checked and adjust if a genuine bold applicant ever reads below it."""
+    if crop_bgr.size == 0:
+        return 0.0
+    gray = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2GRAY)
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    contours, _ = cv2.findContours(binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+    widths = []
+    for c in contours:
+        area = cv2.contourArea(c)
+        perimeter = cv2.arcLength(c, True)
+        if perimeter > 0 and area > 2:
+            widths.append(2 * area / perimeter)
+    if not widths:
+        return 0.0
+    return float(np.median(widths))
+
+
+# Genuine bold applicant text measured 1.69-1.72 on real crops; every false
+# "applicant" (italic disclaimer, regular goods-list text) measured <=0.86.
+# Set with margin below the observed genuine floor, not right at the gap.
+APPLICANT_MIN_STROKE_WIDTH = 1.2
 
 
 def ocr_correct(img, cls_name, box):
@@ -221,6 +270,24 @@ def ocr_correct(img, cls_name, box):
     label_crop = full_crop[:strip_h, :strip_w]
 
     norm_text, raw_text = read_box_text(label_crop)
+
+    # Rule 1 needs to see further down the box than the phrase/stroke-width
+    # checks do - a multi-line goods list's 2+ semicolons can start past
+    # this short strip (confirmed: "Entertainment services providing
+    # facilities for singing with (Karaoke); party planning...; all
+    # included..." has both ";" on lines 2-3). Widening label_crop itself
+    # to fix this broke stroke_width() instead - a taller crop pulls in
+    # extra lines' connected components and shifts the per-character
+    # area/perimeter ratio, flipping two previously-correct corrections
+    # back to wrong (measured 1.11->1.49 and 0.68->1.44, both crossing back
+    # above the bold floor). Keep label_crop short for those; use a second,
+    # taller crop just for the semicolon count.
+    tall_h = max(1, min(full_crop.shape[0], int(full_crop.shape[0] * 0.6) + 20))
+    if raw_text.count(";") < 2 and tall_h > strip_h:
+        tall_crop = full_crop[:tall_h, :strip_w]
+        _, tall_raw_text = read_box_text(tall_crop)
+        if len(tall_raw_text) > len(raw_text):
+            raw_text = tall_raw_text
     info["ocr_text"]  = norm_text
     info["ink_ratio"] = round(ink_density(full_crop), 3)
 
@@ -288,6 +355,22 @@ def ocr_correct(img, cls_name, box):
         elif cls_name == "agent" and norm_text and not norm_text.startswith("AGENT"):
             final_cls = "applicant"
             info["reason"] = f"classified 'agent' but text doesn't start with AGENT (read: '{norm_text[:24]}')"
+
+    # Rule 6: whatever landed on "applicant" (raw YOLO guess, or Rule 3's
+    # own agent->applicant reassignment above) needs to actually be BOLD -
+    # every real applicant name in this journal format is bold, unlike the
+    # italic disclaimer text or regular-weight goods-list text that keeps
+    # getting mistaken for it (see stroke_width() docstring for the
+    # validated real numbers). Checked last and only for "applicant" so it
+    # can't interfere with the text-pattern rules above, which are stronger
+    # signals when they fire.
+    if final_cls == "applicant":
+        sw = stroke_width(label_crop)
+        info["stroke_width"] = round(sw, 3)
+        if sw < APPLICANT_MIN_STROKE_WIDTH:
+            info["reason"] = (f"classified 'applicant' but stroke_width={sw:.2f} is below the bold "
+                               f"floor of {APPLICANT_MIN_STROKE_WIDTH} (read: '{norm_text[:24]}')")
+            final_cls = "description"
 
     return final_cls, info
 
@@ -443,7 +526,7 @@ def prompt_input():
 def main():
     parser = argparse.ArgumentParser(description="Test your trained YOLO trademark model.")
     parser.add_argument("--input",      default=None,                     help="Path to image (.png/.jpg) or PDF")
-    parser.add_argument("--model",      default="models/best_colab4.pt",  help="Path to trained model .pt file")
+    parser.add_argument("--model",      default="models/best_colab5.pt",  help="Path to trained model .pt file")
     parser.add_argument("--conf",       type=float, default=0.45,         help="Confidence threshold (default: 0.25)")
     parser.add_argument("--out",        default="test_results",           help="Output folder for annotated images")
     parser.add_argument("--start_page", type=int,   default=4,            help="PDF: first page to process")
