@@ -11,45 +11,53 @@ def main():
         print("❌ GPU not found by PyTorch. Falling back to CPU.")
         device = "cpu"
 
-    # 2. Load base model (fresh start — new 9-class dataset is different from old logo-only model)
-    # yolov8s = small, good balance for 4GB VRAM + 9 classes
-    # Switch to yolov8n.pt if you get CUDA out of memory errors
-    model = YOLO("yolov8s.pt")  # Starting Fresh Train
-    #model = YOLO(r"runs\\detect\\train-2\\weights\\best.pt")  # ← update if needed currently train-2 best.pt is best
+    # 2. Load base model — FINE-TUNING from best_colab3 (not a fresh start).
+    # best_colab3 already knows how to find/classify fields on these documents;
+    # warm-starting from it reuses that instead of relearning it from scratch.
+    # If final_dataset/logo_dataset.yaml has been updated to nc:10 (text_logo
+    # added), Ultralytics reinitializes just the final classification layer to
+    # match — the rest of the backbone's learned weights carry over as-is.
+    model = YOLO("models/best_colab3.pt")
 
     # 3. Training
     model.train(
-        name="train-3",
+        name="train-text-logo",
         exist_ok=True,
         data=r"C:\\Users\\xian.xin\\MarkLogic\\final_dataset\\logo_dataset.yaml",
 
-        epochs=150,         # More epochs since dataset is small (48 images)
-                            # Early stopping will kick in before 100 if model converges
+        epochs=100,         # Larger dataset now (1,123 images) than the original
+                            # 48-image run this script was tuned for — needs fewer
+                            # epochs to converge; patience will stop it earlier anyway.
 
-        imgsz=640,          # Standard size, fine for 4GB VRAM
-        batch=8,            # Sweet spot for 4GB VRAM with 9 classes
+        imgsz=640,
+        batch=16,           # RTX 5070 8GB (vs. the 4GB card this was tuned for before) —
+                            # doubled from 8. Drop to 8 if you hit a CUDA OOM error.
 
         device=device,
 
-        # PC SPECIFIC TUNING (Ryzen 5 5600H + 16GB RAM):
-        workers=4,
-        amp=True,           # Saves VRAM with mixed precision
-        cache=True,         # Cache images in RAM for faster training
+        # RTX 5070 Laptop (8GB VRAM) + 32 logical CPU cores:
+        workers=8,          # More than 4 now that there are real cores to spare,
+                            # but not maxed to 32 — diminishing returns past ~8 for
+                            # a dataset this size, and it's not worth the overhead.
+        amp=True,
+        cache=True,         # Fine to cache in RAM at this dataset size (1,123 images)
 
-        # ACCURACY TUNING:
-        patience=30,        # Increased from 10 — gives model more time to improve on small dataset
+        # FINE-TUNING TUNING (different from a fresh-start run):
+        patience=20,
         val=True,
-        #lr0=0.01,           # Reset to default — starting fresh so no need for low LR
-        warmup_epochs=5,    # Gentle warmup since dataset is small
-        optimizer="auto",   
+        lr0=0.001,          # Lower than the fresh-start default (0.01) — warm-starting
+                            # from a checkpoint that already works needs gentler updates,
+                            # not large steps that could undo what it already learned.
+        warmup_epochs=2,    # Less warmup needed than a fresh start from ImageNet weights
+        optimizer="auto",
 
-        # DATA AUGMENTATION (critical for small datasets):
+        # DATA AUGMENTATION:
         augment=True,
         flipud=0.1,
         fliplr=0.5,
-        mosaic=1.0,         # Combine 4 images — helps with small dataset
-        degrees=5.0,        # Small rotation — logos can be slightly tilted
-        scale=0.3,          # Random scale
+        mosaic=1.0,
+        degrees=5.0,
+        scale=0.3,
     )
 
 if __name__ == "__main__":
