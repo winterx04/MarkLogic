@@ -15,8 +15,67 @@ import argparse
 import cv2
 import numpy as np
 import pdfplumber
-from ultralytics import YOLO
 from PIL import Image
+
+# PaddleOCR (device='gpu') MUST be constructed before `from ultralytics import
+# YOLO` below. Confirmed by direct reproduction: torch's cu130 build bundles
+# its own nvidia-cudnn-cu12 DLLs (torch\lib\cudnn_cnn64_9.dll, a different
+# build than paddle's own nvidia\cudnn\bin\cudnn_cnn64_9.dll - same filename,
+# different content/size). Whichever loads into the process first wins that
+# filename; if torch loads first, paddle's later attempt to use its own
+# cudnn DLL hits a version mismatch ("WinError 127: the specified procedure
+# could not be found") because Windows resolves the already-loaded module by
+# name rather than the new file's actual path. Importing/constructing paddle
+# first avoids the conflict entirely.
+_ocr_engine = None
+
+
+def _get_ocr_engine():
+    """Lazy singleton, GPU-accelerated (confirmed on this machine's RTX 5070:
+    ~0.02s/call warm vs ~5s/call on CPU for this same model) - added here so
+    the benchmark can show what text each box actually reads, which is the
+    direct way to tell a genuine logo device apart from a box that should
+    have been text_logo instead."""
+    global _ocr_engine
+    if _ocr_engine is None:
+        try:
+            from paddleocr import PaddleOCR
+            _ocr_engine = PaddleOCR(
+                use_doc_orientation_classify=False,
+                use_doc_unwarping=False,
+                use_textline_orientation=False,
+                lang='en',
+                device='gpu',
+            )
+        except Exception as e:
+            print(f"⚠ OCR unavailable ({e}) - continuing without OCR read-out")
+            _ocr_engine = False
+    return _ocr_engine
+
+
+_get_ocr_engine()  # force paddle's cuDNN DLLs to load before ultralytics/torch below
+from ultralytics import YOLO
+
+
+def ocr_crop(img_bgr, box, min_conf=0.5):
+    """Best-effort text read off one detection's crop. Returns "" if OCR is
+    unavailable, found nothing, or the crop is empty."""
+    engine = _get_ocr_engine()
+    if not engine:
+        return ""
+    x1, y1, x2, y2 = box
+    crop = img_bgr[max(0, y1):max(0, y2), max(0, x1):max(0, x2)]
+    if crop.size == 0:
+        return ""
+    try:
+        words = []
+        for res in engine.predict(crop):
+            texts  = res.get('rec_texts')  or []
+            scores = res.get('rec_scores') or []
+            words.extend(t for t, s in zip(texts, scores) if s >= min_conf)
+        return " ".join(words)
+    except Exception:
+        return ""
 
 # Class names for the model trained on the CURRENT final_dataset/logo_dataset.yaml
 # scheme (10 classes: text_logo is its own class again, split back out of logo,
@@ -60,8 +119,12 @@ def load_model(model_path):
     return YOLO(model_path)
 
 
-def draw_results(img, results, conf_threshold):
-    """Draw bounding boxes + labels on image. Returns annotated image."""
+def draw_results(img, results, conf_threshold, read_ocr=False):
+    """Draw bounding boxes + labels on image. Returns annotated image.
+
+    read_ocr=True also reads the literal text off each box's crop - useful
+    for telling a genuine logo device apart from a box that should have been
+    text_logo instead, but costs one OCR call per box, so it's opt-in."""
     annotated = img.copy()
     boxes     = results[0].boxes
 
@@ -89,8 +152,10 @@ def draw_results(img, results, conf_threshold):
         cv2.putText(annotated, label, (x1 + 2, y1 - 4),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
+        ocr_text = ocr_crop(img, (x1, y1, x2, y2)) if read_ocr else ""
+
         detections.append({"class": cls_name, "conf": round(conf, 3),
-                            "box": (x1, y1, x2, y2)})
+                            "box": (x1, y1, x2, y2), "ocr": ocr_text})
 
     return annotated, detections
 
@@ -104,14 +169,14 @@ def test_image(model, img_path, conf, out_dir):
 
     print(f"\n🔍 Running detection on: {img_path}")
     results            = model(img, conf=conf, verbose=False)
-    annotated, detections = draw_results(img, results, conf)
+    annotated, detections = draw_results(img, results, conf, read_ocr=True)
 
     # Print results to terminal
     if detections:
         print(f"\n{'─'*50}")
         print(f"  Found {len(detections)} detection(s):")
         for d in detections:
-            print(f"  • {d['class']:<35} conf: {d['conf']}")
+            print(f"  • {d['class']:<35} conf: {d['conf']}  ocr: {d['ocr']!r}")
         print(f"{'─'*50}")
     else:
         print("  ⚠ No detections above confidence threshold.")
@@ -154,7 +219,7 @@ def test_pdf(model, pdf_path, conf, out_dir, start_page=4, max_pages=10, dpi=150
             img     = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
 
             results               = model(img, conf=conf, verbose=False)
-            annotated, detections = draw_results(img, results, conf)
+            annotated, detections = draw_results(img, results, conf, read_ocr=True)
             total_detections     += len(detections)
 
             out_path = os.path.join(out_dir, f"page_{page_num:04d}_result.jpg")
@@ -162,7 +227,7 @@ def test_pdf(model, pdf_path, conf, out_dir, start_page=4, max_pages=10, dpi=150
 
             print(f"  Page {page_num:>4}: {len(detections)} detection(s) → {out_path}")
             for d in detections:
-                print(f"           • {d['class']:<35} conf: {d['conf']}")
+                print(f"           • {d['class']:<35} conf: {d['conf']}  ocr: {d['ocr']!r}")
 
     print(f"\n✅ Done — {total_detections} total detections across {end_page - start_page + 1} pages")
     print(f"💾 Results saved to: {out_dir}")

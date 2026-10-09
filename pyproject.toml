@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "numpy>=2.4.3",
+    "numpy",  # unconstrained - paddleocr==3.7.0 requires numpy<2.4
     "opencv-python>=4.13.0.92",
     "pillow>=12.1.1",
     "tqdm>=4.67.3",
@@ -15,11 +15,23 @@ dependencies = [
     "pdf2image>=1.17.0",
     "pdfplumber>=0.11.1",
     "label-studio>=1.23.0",
+    "paddleocr==3.7.0",
+    "paddlepaddle-gpu",
+    "nvidia-cudnn-cu12>=9.9.0.52",
 ]
 
 [[tool.uv.index]]
 name = "pytorch-cu130"
 url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+# PaddlePaddle's official GPU wheels aren't on PyPI - cu129 is their newest
+# published CUDA build as of this writing. Confirmed directly on this
+# machine's RTX 5070 (Blackwell): works fine (CUDA builds are generally
+# forward-compatible with newer drivers).
+[[tool.uv.index]]
+name = "paddle-cu129"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cu129/"
 explicit = true
 
 [tool.uv.sources]
@@ -28,4 +40,7 @@ torch = [
 ]
 torchvision = [
   { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+paddlepaddle-gpu = [
+  { index = "paddle-cu129", marker = "sys_platform == 'win32'" },
 ]

@@ -17,12 +17,15 @@ def main():
     # If final_dataset/logo_dataset.yaml has been updated to nc:10 (text_logo
     # added), Ultralytics reinitializes just the final classification layer to
     # match — the rest of the backbone's learned weights carry over as-is.
-    model = YOLO("models/best_colab3.pt")
-
+    
+    # model = YOLO("models/best_colab3.pt")
+    model = YOLO("models/best_text_logo_v1.pt")  
     # 3. Training
     model.train(
         name="train-text-logo",
-        exist_ok=True,
+        exist_ok=False,     # auto-increments to train-text-logo2, train-text-logo3, ...
+                            # instead of overwriting the same run every time (exist_ok=True
+                            # was silently clobbering the previous run's results/weights).
         data=r"C:\\Users\\xian.xin\\MarkLogic\\final_dataset\\logo_dataset.yaml",
 
         epochs=100,         # Larger dataset now (1,123 images) than the original
