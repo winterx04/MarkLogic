@@ -14,20 +14,18 @@ import os
 import argparse
 import cv2
 import numpy as np
+import pdfplumber
 from ultralytics import YOLO
 from PIL import Image
-from pdf2image import convert_from_path, pdfinfo_from_path
-
-POPPLER_PATH = r"C:\poppler-25.12.0\Library\bin"   # ← update if needed
 
 # Class names for the model trained on the CURRENT final_dataset/logo_dataset.yaml
-# scheme (text_logo merged into logo, international_registration_number added).
-# This does NOT match models/best_colab.pt (the old 9-class model, text_logo
-# included, no international_registration_number) — that's why the default
-# --model path below points at a file that doesn't exist yet, so an accidental
-# run without --model fails loudly instead of silently shifting every label.
+# scheme (10 classes: text_logo is its own class again, split back out of logo,
+# plus international_registration_number). Older checkpoints (best_colab2..5)
+# were trained on the 9-class scheme without text_logo as a separate class -
+# don't point --model at one of those unless you intend to test the old scheme.
 CLASS_NAMES = [
     "logo",
+    "text_logo",
     "serial_number",
     "description",
     "agent",
@@ -41,6 +39,7 @@ CLASS_NAMES = [
 # Color per class (BGR) — shown on the output image
 CLASS_COLORS = {
     "logo":                             (0,   0,   255),  # Red
+    "text_logo":                        (0,   215, 255),  # Gold
     "serial_number":                    (255, 0,   0  ),  # Blue
     "description":                      (0,   170, 0  ),  # Green
     "agent":                            (0,   136, 255),  # Orange
@@ -132,44 +131,40 @@ def test_image(model, img_path, conf, out_dir):
 
 
 def test_pdf(model, pdf_path, conf, out_dir, start_page=4, max_pages=10, dpi=150):
-    """Run detection on each page of a PDF."""
+    """Run detection on each page of a PDF, rendered via pdfplumber (no
+    Poppler/pdf2image dependency - matches how the real pipeline in
+    pdf_extractor.py / extract_trademarks.py renders pages)."""
     if not os.path.exists(pdf_path):
         print(f"❌ PDF not found: {pdf_path}")
         return
 
-    info        = pdfinfo_from_path(pdf_path, poppler_path=POPPLER_PATH)
-    total_pages = info["Pages"]
-    end_page    = min(start_page + max_pages - 1, total_pages)
-
-    print(f"\n📄 PDF: {pdf_path}")
-    print(f"   Pages {start_page}–{end_page} of {total_pages} (DPI={dpi})")
-    print(f"   Converting pages...")
-
-    pages = convert_from_path(
-        pdf_path, dpi=dpi,
-        first_page=start_page, last_page=end_page,
-        poppler_path=POPPLER_PATH
-    )
-
     os.makedirs(out_dir, exist_ok=True)
     total_detections = 0
 
-    for i, page in enumerate(pages):
-        page_num = start_page + i
-        img      = cv2.cvtColor(np.array(page), cv2.COLOR_RGB2BGR)
+    with pdfplumber.open(pdf_path) as pdf:
+        total_pages = len(pdf.pages)
+        end_page    = min(start_page + max_pages - 1, total_pages)
 
-        results               = model(img, conf=conf, verbose=False)
-        annotated, detections = draw_results(img, results, conf)
-        total_detections     += len(detections)
+        print(f"\n📄 PDF: {pdf_path}")
+        print(f"   Pages {start_page}–{end_page} of {total_pages} (DPI={dpi})")
 
-        out_path = os.path.join(out_dir, f"page_{page_num:04d}_result.jpg")
-        cv2.imwrite(out_path, annotated)
+        for page_num in range(start_page, end_page + 1):
+            page    = pdf.pages[page_num - 1]
+            pil_img = page.to_image(resolution=dpi).original.convert("RGB")
+            img     = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
 
-        print(f"  Page {page_num:>4}: {len(detections)} detection(s) → {out_path}")
-        for d in detections:
-            print(f"           • {d['class']:<35} conf: {d['conf']}")
+            results               = model(img, conf=conf, verbose=False)
+            annotated, detections = draw_results(img, results, conf)
+            total_detections     += len(detections)
 
-    print(f"\n✅ Done — {total_detections} total detections across {len(pages)} pages")
+            out_path = os.path.join(out_dir, f"page_{page_num:04d}_result.jpg")
+            cv2.imwrite(out_path, annotated)
+
+            print(f"  Page {page_num:>4}: {len(detections)} detection(s) → {out_path}")
+            for d in detections:
+                print(f"           • {d['class']:<35} conf: {d['conf']}")
+
+    print(f"\n✅ Done — {total_detections} total detections across {end_page - start_page + 1} pages")
     print(f"💾 Results saved to: {out_dir}")
 
 
@@ -185,7 +180,7 @@ def prompt_input():
 def main():
     parser = argparse.ArgumentParser(description="Test your trained YOLO trademark model.")
     parser.add_argument("--input",      default=None,                              help="Path to image (.png/.jpg) or PDF")
-    parser.add_argument("--model",      default="models/best_colab3.pt", help="Path to trained model .pt file (default: the not-yet-downloaded 9-class-v2 retrain; pass --model models/best_colab.pt explicitly if you intentionally want to test the old model)")
+    parser.add_argument("--model",      default="models/best_colab3.pt", help="Path to trained model .pt file (default is an old 9-class checkpoint, no text_logo - pass --model models/best_text_logo_v1.pt to test the current 10-class scheme)")
     parser.add_argument("--conf",       type=float, default=0.25,                 help="Confidence threshold (default: 0.25)")
     parser.add_argument("--out",        default="test_results",                   help="Output folder for annotated images")
     parser.add_argument("--start_page", type=int,   default=4,                    help="PDF: first page to process")

@@ -13,6 +13,7 @@ dependencies = [
     "torch",
     "torchvision",
     "pdf2image>=1.17.0",
+    "pdfplumber>=0.11.1",
     "label-studio>=1.23.0",
 ]
 

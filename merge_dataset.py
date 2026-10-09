@@ -21,23 +21,23 @@ import tempfile
 # ── Your desired class order (must match logo_dataset.yaml) ──
 DESIRED_CLASSES = [
     "logo",                            # 0
-    "serial_number",                   # 1
-    "description",                     # 2
-    "agent",                           # 3
-    "applicant",                       # 4
-    "class",                           # 5
-    "date",                            # 6
-    "international_registration_date", # 7
-    "international_registration_number"# 8
+    "text_logo",                       # 1
+    "serial_number",                   # 2
+    "description",                     # 3
+    "agent",                           # 4
+    "applicant",                       # 5
+    "class",                           # 6
+    "date",                            # 7
+    "international_registration_date", # 8
+    "international_registration_number"# 9
 ]
 
 # Classes retired from DESIRED_CLASSES that should still fold into another
-# class instead of being skipped as "unknown" — e.g. text_logo was merged
-# into logo. Anything in an export using one of these old names is treated
-# as if it were labeled with the target name.
-CLASS_ALIASES = {
-    "text_logo": "logo",
-}
+# class instead of being skipped as "unknown". Empty for now - text_logo
+# used to fold into logo here, but it's a real class again as of the
+# labeling pass that established a reusable logo/text_logo decision test
+# (strip away the element - still recognizable as something on its own?).
+CLASS_ALIASES = {}
 
 
 def read_classes(classes_txt_path):
@@ -94,34 +94,6 @@ def extract_export(zip_path, tmp_dir):
     return images_dir, labels_dir, classes_txt
 
 
-def collect_existing(dataset_dir):
-    """Collect all stems already present in the dataset (train + val)."""
-    existing = set()
-    for split in ["train", "val"]:
-        img_dir = os.path.join(dataset_dir, "images", split)
-        if os.path.exists(img_dir):
-            for f in os.listdir(img_dir):
-                existing.add(os.path.splitext(f)[0])
-    return existing
-
-
-def collect_all_stems(dataset_dir):
-    """Return list of all image stems across train + val."""
-    stems = []
-    for split in ["train", "val"]:
-        img_dir = os.path.join(dataset_dir, "images", split)
-        lbl_dir = os.path.join(dataset_dir, "labels", split)
-        if not os.path.exists(img_dir):
-            continue
-        for fname in os.listdir(img_dir):
-            stem     = os.path.splitext(fname)[0]
-            img_path = os.path.join(img_dir, fname)
-            lbl_path = os.path.join(lbl_dir, stem + ".txt")
-            if os.path.exists(lbl_path):
-                stems.append((stem, img_path, lbl_path))
-    return stems
-
-
 def merge(new_export_zip, dataset_dir, val_ratio, seed):
     print("\n" + "="*55)
     print("  Dataset Merger")
@@ -151,25 +123,21 @@ def merge(new_export_zip, dataset_dir, val_ratio, seed):
     os.makedirs(all_img_dir, exist_ok=True)
     os.makedirs(all_lbl_dir, exist_ok=True)
 
-    existing_stems = collect_existing(dataset_dir)
+    existing_stems = {os.path.splitext(f)[0] for f in os.listdir(all_img_dir)}
     new_img_dir    = images_dir
     new_lbl_dir    = labels_dir
 
     added    = 0
+    updated  = 0
     skipped  = 0
     new_imgs = sorted(f for f in os.listdir(new_img_dir)
                       if f.lower().endswith((".png", ".jpg", ".jpeg")))
 
-    print(f"\n[3/4] Merging {len(new_imgs)} new images into dataset...")
+    print(f"\n[3/4] Merging {len(new_imgs)} image(s) from export (new + re-labeled)...")
 
     for img_fname in new_imgs:
-        stem = os.path.splitext(img_fname)[0]
-
-        # Skip duplicates
-        if stem in existing_stems:
-            print(f"  ⏭ Skip (already exists): {stem}")
-            skipped += 1
-            continue
+        stem      = os.path.splitext(img_fname)[0]
+        is_update = stem in existing_stems
 
         lbl_fname = stem + ".txt"
         lbl_src   = os.path.join(new_lbl_dir, lbl_fname)
@@ -180,61 +148,46 @@ def merge(new_export_zip, dataset_dir, val_ratio, seed):
             skipped += 1
             continue
 
-        # Remap and write label
+        # Remap and write label - OVERWRITES any existing label for this
+        # stem. A re-export of an image already in the dataset means it was
+        # re-labeled in Label Studio (e.g. splitting logo into logo/
+        # text_logo), so the new label must replace the stale one rather
+        # than being silently discarded as "already exists".
         new_lines = remap_label_file(lbl_src, remap)
         lbl_dst   = os.path.join(all_lbl_dir, lbl_fname)
         with open(lbl_dst, "w") as f:
             f.write("\n".join(new_lines))
 
-        # Copy image
+        # Copy image (harmless re-copy when unchanged).
         shutil.copy(img_src, os.path.join(all_img_dir, img_fname))
 
         existing_stems.add(stem)
-        added += 1
-        print(f"  ✅ Added: {stem}  ({len(new_lines)} boxes)")
+        if is_update:
+            updated += 1
+            print(f"  🔄 Updated: {stem}  ({len(new_lines)} boxes)")
+        else:
+            added += 1
+            print(f"  ✅ Added: {stem}  ({len(new_lines)} boxes)")
 
-    print(f"\n  Added: {added} | Skipped/duplicate: {skipped}")
+    print(f"\n  Added: {added} | Updated: {updated} | Skipped (no label): {skipped}")
 
     # ── Step 4: Re-split all data train/val ───────────────
     print(f"\n[4/4] Re-splitting all data (val={int(val_ratio*100)}%) ...")
 
-    # Gather everything: existing train/val + newly added all/
-    all_entries = []  # list of (stem, img_path, lbl_path)
-
-    for split in ["train", "val"]:
-        img_dir = os.path.join(dataset_dir, "images", split)
-        lbl_dir = os.path.join(dataset_dir, "labels", split)
-        if not os.path.exists(img_dir):
-            continue
-        for fname in os.listdir(img_dir):
-            stem     = os.path.splitext(fname)[0]
-            img_path = os.path.join(img_dir, fname)
-            lbl_path = os.path.join(lbl_dir, stem + ".txt")
-            if os.path.exists(img_path) and os.path.exists(lbl_path):
-                all_entries.append((stem, img_path, lbl_path, fname))
-
-    # Add newly merged entries from all/
-    for fname in os.listdir(all_img_dir):
+    # images/all + labels/all is the persistent, authoritative full archive
+    # (every merge writes/overwrites into it, never just the new batch) -
+    # source the split from there alone, not from train/val, which are
+    # about to be wiped and rebuilt anyway. Reading from train/val here
+    # would reintroduce the exact bug just fixed above: a re-labeled stem's
+    # STALE train/val copy would silently win over its freshly updated
+    # all/ copy.
+    all_entries = []
+    for fname in sorted(os.listdir(all_img_dir)):
         stem     = os.path.splitext(fname)[0]
         img_path = os.path.join(all_img_dir, fname)
         lbl_path = os.path.join(all_lbl_dir, stem + ".txt")
-        # Avoid duplicates already in train/val
-        if not any(e[0] == stem for e in all_entries):
-            if os.path.exists(img_path) and os.path.exists(lbl_path):
-                all_entries.append((stem, img_path, lbl_path, fname))
-
-    # Back every entry with a persistent copy in images/all + labels/all,
-    # since we're about to delete the train/ and val/ folders below.
-    normalized_entries = []
-    for stem, img_path, lbl_path, fname in all_entries:
-        all_img_path = os.path.join(all_img_dir, fname)
-        all_lbl_path = os.path.join(all_lbl_dir, stem + ".txt")
-        if not os.path.exists(all_img_path):
-            shutil.copy(img_path, all_img_path)
-        if not os.path.exists(all_lbl_path):
-            shutil.copy(lbl_path, all_lbl_path)
-        normalized_entries.append((stem, all_img_path, all_lbl_path, fname))
-    all_entries = normalized_entries
+        if os.path.exists(lbl_path):
+            all_entries.append((stem, img_path, lbl_path, fname))
 
     # Shuffle and split
     random.seed(seed)

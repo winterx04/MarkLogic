@@ -22,7 +22,7 @@ import cv2
 import numpy as np
 from pdf2image import convert_from_path, pdfinfo_from_path
 
-POPPLER_PATH = r"C:\poppler-25.12.0\Library\bin"   # ← update if needed
+POPPLER_PATH = r"C:\Users\xian.xin\AppData\Local\Microsoft\WinGet\Packages\oschwartz10612.Poppler_Microsoft.Winget.Source_8wekyb3d8bbwe\poppler-25.07.0\Library\bin"
 
 # ─────────────────────────────────────────────
 # 1. PDF → PNG images

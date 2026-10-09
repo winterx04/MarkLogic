@@ -9,3 +9,6 @@
 /to_review/
 /export_fixed/
 *.zip
+runs/detect
+test_results/
+weights/*

@@ -10,7 +10,7 @@ from PIL import Image
 from tqdm import tqdm
 from utils import tight_crop_by_nonwhite, remove_white_bg_make_transparent
 
-POPPLER_PATH = r"C:\poppler-25.12.0\Library\bin"
+POPPLER_PATH = r"C:\Users\xian.xin\AppData\Local\Microsoft\WinGet\Packages\oschwartz10612.Poppler_Microsoft.Winget.Source_8wekyb3d8bbwe\poppler-25.07.0\Library\bin"
 
 def pages_from_pdf(pdf_path, dpi=150, max_pages=10):
     abs_pdf_path = os.path.abspath(pdf_path)
