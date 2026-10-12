@@ -22,22 +22,21 @@ import argparse
 
 from ultralytics import YOLO
 
-# Class names for the model trained on the CURRENT final_dataset/logo_dataset.yaml
-# scheme (text_logo merged into logo, international_registration_number added).
-# Does NOT match models/best_colab.pt (the old model) - that's why the --model
-# default below points at a not-yet-downloaded file, so running this without
-# --model before the retrain finishes fails loudly instead of silently
-# shifting every predicted label (see test_model.py for the same note).
+# Class names must match the model passed via --model. This is the 10-class
+# scheme of models/best_text_logo_v2.pt and final_dataset/logo_dataset.yaml
+# (text_logo is its own class again). Older 9-class models (best_colab*.pt)
+# do NOT match - using them with this list shifts every predicted label.
 CLASS_NAMES = [
     "logo",                             # 0
-    "serial_number",                    # 1
-    "description",                      # 2
-    "agent",                            # 3
-    "applicant",                        # 4
-    "class",                            # 5
-    "date",                             # 6
-    "international_registration_date",  # 7
-    "international_registration_number",# 8
+    "text_logo",                        # 1
+    "serial_number",                    # 2
+    "description",                      # 3
+    "agent",                            # 4
+    "applicant",                        # 5
+    "class",                            # 6
+    "date",                             # 7
+    "international_registration_date",  # 8
+    "international_registration_number",# 9
 ]
 
 
@@ -61,6 +60,12 @@ def pre_label(images_dir, out_dir, model_path, conf):
 
     print(f"[Model] Loading {model_path}")
     model = YOLO(model_path)
+    model_classes = [model.names[i] for i in sorted(model.names)]
+    if model_classes != CLASS_NAMES:
+        raise SystemExit(
+            f"Model classes don't match CLASS_NAMES - labels would be shifted.\n"
+            f"  model: {model_classes}\n  script: {CLASS_NAMES}"
+        )
 
     img_files = sorted(
         f for f in os.listdir(images_dir)
@@ -122,10 +127,8 @@ def main():
     p = argparse.ArgumentParser(description="Pre-label new images with the current best model.")
     p.add_argument("--images", required=True, help="Folder of new, unlabeled page images")
     p.add_argument("--out", default="to_review", help="Output folder (default: to_review)")
-    p.add_argument("--model", default="models/best_colab3.pt",
-                    help="Path to trained model weights (default: the not-yet-downloaded "
-                         "9-class-v2 retrain; pass --model models/best_colab.pt explicitly "
-                         "if you intentionally want to pre-label with the old model)")
+    p.add_argument("--model", default="models/best_text_logo_v2.pt",
+                    help="Path to trained model weights (must use the 10-class scheme in CLASS_NAMES)")
     p.add_argument("--conf", type=float, default=0.25,
                     help="Confidence threshold; lower = more (noisier) boxes to review")
     args = p.parse_args()

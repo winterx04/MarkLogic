@@ -10,8 +10,7 @@
 # machines) - this is plain stdlib.
 #
 # Usage:
-#   python yolo_to_labelstudio.py --review_dir to_review_index2 \
-#       --local_files_prefix "http://localhost:8080/data/local-files/?d=to_review_index2/images"
+#   python yolo_to_labelstudio.py --review_dir to_review --local_files_prefix "/data/local-files/?d=to_review/images"
 # ─────────────────────────────────────────────────────────────
 
 import os
