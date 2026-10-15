@@ -19,14 +19,14 @@ def main():
     # match — the rest of the backbone's learned weights carry over as-is.
     
     # model = YOLO("models/best_colab3.pt")
-    model = YOLO("models/best_text_logo_v1.pt")  
+    model = YOLO("models/best_text_logo_v2.pt")  
     # 3. Training
     model.train(
-        name="train-text-logo",
+        name="train-logo-merged",   # text_logo merged into logo (final_dataset_merged); own folder so it never mixes with older runs
         exist_ok=False,     # auto-increments to train-text-logo2, train-text-logo3, ...
                             # instead of overwriting the same run every time (exist_ok=True
                             # was silently clobbering the previous run's results/weights).
-        data=r"C:\\Users\\xian.xin\\MarkLogic\\final_dataset\\logo_dataset.yaml",
+        data=r"C:\Users\xian.xin\MarkLogic\final_dataset_merged\logo_dataset.yaml",   # built by make_merged_dataset.py (text_logo -> logo)
 
         epochs=100,         # Larger dataset now (1,123 images) than the original
                             # 48-image run this script was tuned for — needs fewer
@@ -48,17 +48,18 @@ def main():
         # FINE-TUNING TUNING (different from a fresh-start run):
         patience=20,
         val=True,
-        lr0=0.001,          # Lower than the fresh-start default (0.01) — warm-starting
+        lr0=0.0002,          # Lower than the fresh-start default (0.01) — warm-starting
                             # from a checkpoint that already works needs gentler updates,
                             # not large steps that could undo what it already learned.
+        lrf=0.1,            # Lower than the fresh-start default (0.2) — same reasoning as lr0.
         warmup_epochs=2,    # Less warmup needed than a fresh start from ImageNet weights
-        optimizer="auto",
+        optimizer="AdamW",  # AdamW is better for fine-tuning than SGD (default for fresh-start runs)
 
         # DATA AUGMENTATION:
-        augment=True,
-        flipud=0.1,
-        fliplr=0.5,
-        mosaic=1.0,
+        #augment=True, # (it's for prediction-time augmentation).
+        flipud=0.0,         #Default 0.1
+        fliplr=0.0,         #Default 0.5
+        mosaic=0.5,  #Default 1.0       #Mosaic stitches four pages into one. That breaks the layout cues (a logo at the top, text below), and for a layout-reading model those cues are how it tells the classes apart.
         degrees=5.0,
         scale=0.3,
     )

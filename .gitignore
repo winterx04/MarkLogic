@@ -6,6 +6,7 @@
 .DS_Store
 .env
 /final_dataset/
+/final_dataset_merged/
 /to_review/
 /export_fixed/
 *.zip
